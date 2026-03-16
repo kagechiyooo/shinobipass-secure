@@ -1,0 +1,5 @@
+{
+  "name": "Naruto Login Page",
+  "description": "A modern, responsive login page featuring Naruto Uzumaki.",
+  "requestFramePermissions": ["camera"]
+}
