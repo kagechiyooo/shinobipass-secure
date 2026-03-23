@@ -14,6 +14,8 @@ interface VerifyGesturesViewProps {
 
 export function VerifyGesturesView({ selectedGestures, verifiedCount, onBack, onVerifyStep }: VerifyGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
+  const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
 
   return (
     <motion.div
@@ -72,17 +74,31 @@ export function VerifyGesturesView({ selectedGestures, verifiedCount, onBack, on
           </div>
         ) : (
           <CameraFeed isActive={isCameraActive}>
-            <HandMarkers />
-            <div className="absolute inset-0 flex items-center justify-center">
-              {verifiedCount < 4 && (
-                <div className="text-center space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-widest opacity-60">Detecting...</p>
-                  <p className="text-xl font-bold uppercase tracking-widest text-white">
-                    {HAND_SIGNS.find(s => s.id === selectedGestures[verifiedCount])?.name}
-                  </p>
+            {(video) => (
+              <>
+                <HandMarkers video={video} onHandsStateChange={setHandsState} onError={setHandTrackingError} />
+                <div className="absolute inset-0 flex items-center justify-center z-20">
+                  {verifiedCount < 4 && (
+                    <div className="text-center space-y-2">
+                      <p className="text-xs font-bold uppercase tracking-widest opacity-60">
+                        {handTrackingError ?? (handsState.totalHands === 2 ? '2 hands detected' : 'show both hands')}
+                      </p>
+                      <p className="text-xl font-bold uppercase tracking-widest text-white">
+                        {HAND_SIGNS.find(s => s.id === selectedGestures[verifiedCount])?.name}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+                <div className="absolute top-4 right-4 flex gap-2">
+                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.leftDetected ? 'bg-green-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
+                    Left hand
+                  </div>
+                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.rightDetected ? 'bg-sky-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
+                    Right hand
+                  </div>
+                </div>
+              </>
+            )}
           </CameraFeed>
         )}
       </div>
@@ -91,9 +107,9 @@ export function VerifyGesturesView({ selectedGestures, verifiedCount, onBack, on
         {verifiedCount < 4 ? (
           <button
             onClick={onVerifyStep}
-            disabled={!isCameraActive}
+            disabled={!isCameraActive || handsState.totalHands < 2}
             className={`px-16 py-4 rounded-lg font-bold flex items-center shadow-lg transition-all ${
-              isCameraActive 
+              isCameraActive && handsState.totalHands === 2
                 ? 'bg-[#222222] text-white hover:bg-black' 
                 : 'bg-[#dddddd] text-[#999999] cursor-not-allowed'
             }`}

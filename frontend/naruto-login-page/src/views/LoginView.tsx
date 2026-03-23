@@ -23,7 +23,7 @@ export function LoginView({ onLogin, onRegister, onForgot }: LoginViewProps) {
           Login to your Account
         </h1>
         <p className="text-[#999999] text-[16px]">
-          See what is going on with your business
+          Secure access to your Konoha
         </p>
       </div>
       <form className="space-y-6" onSubmit={onLogin}>

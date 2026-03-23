@@ -12,8 +12,6 @@ import { LoginView } from './views/LoginView';
 import { RegisterView } from './views/RegisterView';
 import { SelectGesturesView } from './views/SelectGesturesView';
 import { RecordGesturesView } from './views/RecordGesturesView';
-import { ChoiceVerifyView } from './views/ChoiceVerifyView';
-import { EmailVerifyView } from './views/EmailVerifyView';
 import { VerifyGesturesView } from './views/VerifyGesturesView';
 import { ResetPasswordView } from './views/ResetPasswordView';
 import { SuccessView } from './views/SuccessView';
@@ -46,18 +44,8 @@ export default function App() {
     }
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setVerifyContext('login');
-    setView('chooseLoginVerify');
-  };
-
-  const handleForgotPassword = () => {
-    setVerifyContext('forgot');
-    setView('chooseForgotVerify');
-  };
-
-  const startGestureVerify = () => {
+  const startGestureVerify = (context: 'login' | 'forgot') => {
+    setVerifyContext(context);
     if (selectedGestures.length === 0) {
       setSelectedGestures(['snake', 'dragon', 'tiger', 'bird']);
     }
@@ -65,8 +53,13 @@ export default function App() {
     setView('verifyGestures');
   };
 
-  const startEmailVerify = () => {
-    setView('emailVerify');
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    startGestureVerify('login');
+  };
+
+  const handleForgotPassword = () => {
+    startGestureVerify('forgot');
   };
 
   const handleVerifyStep = () => {
@@ -81,15 +74,6 @@ export default function App() {
           setView('resetPassword');
         }
       }, 800);
-    }
-  };
-
-  const handleEmailVerifySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (verifyContext === 'login') {
-      setView('home');
-    } else {
-      setView('resetPassword');
     }
   };
 
@@ -144,34 +128,18 @@ export default function App() {
               />
             )}
 
-            {(view === 'chooseLoginVerify' || view === 'chooseForgotVerify') && (
-              <ChoiceVerifyView 
-                onBack={() => setView('login')}
-                onEmailVerify={startEmailVerify}
-                onGestureVerify={startGestureVerify}
-                onCancel={() => setView('login')}
-              />
-            )}
-
-            {view === 'emailVerify' && (
-              <EmailVerifyView 
-                onBack={() => setView(verifyContext === 'login' ? 'chooseLoginVerify' : 'chooseForgotVerify')}
-                onSubmit={handleEmailVerifySubmit}
-              />
-            )}
-
             {view === 'verifyGestures' && (
               <VerifyGesturesView 
                 selectedGestures={selectedGestures}
                 verifiedCount={verifiedCount}
-                onBack={() => setView(verifyContext === 'login' ? 'chooseLoginVerify' : 'chooseForgotVerify')}
+                onBack={() => setView('login')}
                 onVerifyStep={handleVerifyStep}
               />
             )}
 
             {view === 'resetPassword' && (
               <ResetPasswordView 
-                onBack={() => setView('chooseForgotVerify')}
+                onBack={() => setView('login')}
                 onSubmit={(e) => { e.preventDefault(); setView('login'); }}
               />
             )}

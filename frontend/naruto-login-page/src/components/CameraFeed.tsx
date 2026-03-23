@@ -3,11 +3,12 @@ import { CameraOff } from 'lucide-react';
 
 interface CameraFeedProps {
   isActive: boolean;
-  children?: React.ReactNode;
+  children?: React.ReactNode | ((video: HTMLVideoElement | null) => React.ReactNode);
 }
 
 export function CameraFeed({ isActive, children }: CameraFeedProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -59,16 +60,19 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
           <CameraOff className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-xs text-red-400">{error}</p>
         </div>
-      ) : (
+        ) : (
         <>
           <video
-            ref={videoRef}
+            ref={(node) => {
+              videoRef.current = node;
+              setVideoElement(node);
+            }}
             autoPlay
             playsInline
             muted
             className="w-full h-full object-cover scale-x-[-1]"
           />
-          {children}
+          {typeof children === 'function' ? children(videoElement) : children}
         </>
       )}
     </div>
