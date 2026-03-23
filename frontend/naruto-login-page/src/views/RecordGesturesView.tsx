@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Camera, Save, Play } from 'lucide-react';
+import { ArrowLeft, Camera, Save } from 'lucide-react';
 import { HAND_SIGNS } from '../constants';
 import { HandMarkers } from '../components/HandMarkers';
 import { CameraFeed } from '../components/CameraFeed';
@@ -15,6 +15,8 @@ interface RecordGesturesViewProps {
 
 export function RecordGesturesView({ selectedGestures, recordingIndex, repetition, onBack, onSave }: RecordGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
+  const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
   const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
 
   return (
@@ -76,11 +78,25 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
           </div>
         ) : (
           <CameraFeed isActive={isCameraActive}>
-            <HandMarkers />
-            <div className="absolute top-4 left-4 flex items-center space-x-2">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-tighter">Live Preview</span>
-            </div>
+            {(video) => (
+              <>
+                <HandMarkers video={video} onHandsStateChange={setHandsState} onError={setHandTrackingError} />
+                <div className="absolute top-4 left-4 flex items-center space-x-2 z-20">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-bold uppercase tracking-tighter">
+                    {handTrackingError ?? (handsState.totalHands === 2 ? '2 Hands Tracked' : 'Waiting For 2 Hands')}
+                  </span>
+                </div>
+                <div className="absolute top-4 right-4 flex gap-2">
+                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.leftDetected ? 'bg-green-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
+                    Left hand
+                  </div>
+                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.rightDetected ? 'bg-sky-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
+                    Right hand
+                  </div>
+                </div>
+              </>
+            )}
           </CameraFeed>
         )}
       </div>
@@ -88,9 +104,9 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
       <div className="flex justify-center pt-4">
         <button
           onClick={onSave}
-          disabled={!isCameraActive}
+          disabled={!isCameraActive || handsState.totalHands < 2}
           className={`px-16 py-4 rounded-lg font-bold flex items-center shadow-lg transition-all ${
-            isCameraActive 
+            isCameraActive && handsState.totalHands === 2
               ? 'bg-[#222222] text-white hover:bg-black' 
               : 'bg-[#dddddd] text-[#999999] cursor-not-allowed'
           }`}
