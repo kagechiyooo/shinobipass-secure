@@ -9,7 +9,7 @@ interface HandMarkersProps {
   onError?: (message: string | null) => void;
 }
 
-export function HandMarkers({ video, onHandsStateChange, onError }: HandMarkersProps) {
+export function HandMarkers({ video, onHandsStateChange, onLandmarksChange, onError }: HandMarkersProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
