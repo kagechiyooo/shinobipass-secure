@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { HAND_SIGNS } from '../constants';
 
 interface SelectGesturesViewProps {
@@ -25,29 +25,24 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
         <h1 className="text-[28px] font-bold text-[#444444]">Select 4 Hand Signs</h1>
         <p className="text-[#999999]">Choose exactly 4 gestures for your security pattern ({selectedGestures.length}/4)</p>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4 justify-items-center">
         {HAND_SIGNS.map((sign) => (
           <button
             key={sign.id}
             onClick={() => onToggleGesture(sign.id)}
-            className={`relative p-2 rounded-xl border-2 transition-all flex flex-col items-center space-y-1 overflow-hidden ${
+            className={`relative w-fit max-w-full min-w-[8.5rem] px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 overflow-hidden ${
               selectedGestures.includes(sign.id)
-                ? 'border-[#222222] bg-[#FF6321]/20'
+                ? 'border-[#222222] bg-green-100'
                 : 'border-[#cccccc] bg-white hover:border-[#999999]'
             }`}
           >
-            <div className={`absolute inset-0 bg-[#FF6321] opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-20' : ''}`} />
-            <div className="w-full aspect-square relative z-10 flex items-center justify-center overflow-hidden rounded-lg bg-[#f0f0f0]">
-              <img src={sign.image} alt={sign.name} className="w-full h-full object-contain p-1" />
+            <div className={`absolute inset-0 bg-green-500 opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-10' : ''}`} />
+            <div className="relative z-10 inline-flex items-center justify-center overflow-hidden rounded-lg bg-[#f0f0f0] px-2 py-2">
+              <img src={sign.image} alt={sign.name} className="block w-auto h-auto max-w-[8.5rem] max-h-[6.75rem] object-contain" />
             </div>
             <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${selectedGestures.includes(sign.id) ? 'text-[#222222]' : 'text-[#666666]'}`}>
               {sign.name}
             </span>
-            {selectedGestures.includes(sign.id) && (
-              <div className="absolute top-2 right-2 bg-[#222222] text-white rounded-full p-0.5">
-                <CheckCircle2 className="w-3 h-3" />
-              </div>
-            )}
           </button>
         ))}
       </div>

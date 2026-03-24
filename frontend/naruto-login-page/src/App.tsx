@@ -78,7 +78,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex bg-white font-sans text-[#1a1a1a]">
+    <div className="min-h-screen lg:h-screen flex bg-white font-sans text-[#1a1a1a] overflow-hidden">
       {/* Left Side: Naruto Image */}
       <div className="hidden lg:block lg:w-1/2 relative bg-black overflow-hidden">
         <img
@@ -91,8 +91,8 @@ export default function App() {
       </div>
 
       {/* Right Side: Content */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12 overflow-y-auto">
-        <div className="w-full max-w-[480px] py-10">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12">
+        <div className="w-full max-w-[520px] py-10 lg:min-h-[760px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-2">
           <AnimatePresence mode="wait">
             {view === 'login' && (
               <LoginView 
