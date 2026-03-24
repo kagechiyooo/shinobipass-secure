@@ -12,10 +12,32 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
+  const getCameraErrorMessage = (err: unknown) => {
+    if (!window.isSecureContext) {
+      return 'Camera requires HTTPS or localhost. Open this app from https://... or http://localhost.';
+    }
+
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'name' in err &&
+      err.name === 'NotAllowedError'
+    ) {
+      return 'Camera access was blocked. Allow camera permission in your browser and reload.';
+    }
+
+    return 'Could not access camera. Please check browser permissions and camera availability.';
+  };
+
   useEffect(() => {
     async function startCamera() {
       if (isActive) {
         try {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            setError(getCameraErrorMessage(null));
+            return;
+          }
+
           const mediaStream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
               facingMode: 'user',
@@ -30,7 +52,7 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
           setError(null);
         } catch (err) {
           console.error("Error accessing camera:", err);
-          setError("Could not access camera. Please check permissions.");
+          setError(getCameraErrorMessage(err));
         }
       } else {
         stopCamera();
