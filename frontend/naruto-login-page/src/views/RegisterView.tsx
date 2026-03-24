@@ -6,9 +6,11 @@ import { Input } from '../components/Input';
 interface RegisterViewProps {
   onBack: () => void;
   onNext: () => void;
+  username: string;
+  onUsernameChange: (value: string) => void;
 }
 
-export function RegisterView({ onBack, onNext }: RegisterViewProps) {
+export function RegisterView({ onBack, onNext, username, onUsernameChange }: RegisterViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -28,7 +30,13 @@ export function RegisterView({ onBack, onNext }: RegisterViewProps) {
           <Input label="First Name" placeholder="John" />
           <Input label="Last Name" placeholder="Doe" />
         </div>
-        <Input label="Email" type="email" placeholder="mail@abc.com" />
+        <Input
+          label="Email"
+          type="email"
+          placeholder="mail@abc.com"
+          value={username}
+          onChange={(e) => onUsernameChange(e.target.value)}
+        />
         <Input label="Password" type="password" placeholder="****************" />
         <Input label="Confirm Password" type="password" placeholder="****************" />
         <div className="flex justify-center pt-4">
