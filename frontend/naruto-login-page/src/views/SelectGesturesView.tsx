@@ -31,24 +31,22 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
             key={sign.id}
             onClick={() => onToggleGesture(sign.id)}
             className={`relative p-2 rounded-xl border-2 transition-all flex flex-col items-center space-y-1 overflow-hidden ${selectedGestures.includes(sign.id)
-                ? 'border-[#222222] bg-[#FF6321]/20'
-                : 'border-[#cccccc] bg-white hover:border-[#999999]'
+              ? 'border-[#222222] bg-[#FF6321]/20'
+              : 'border-[#cccccc] bg-white hover:border-[#999999]'
               }`}
           >
             <div className={`absolute inset-0 bg-[#FF6321] opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-20' : ''}`} />
             <div className="w-full aspect-square relative z-10 flex items-center justify-center overflow-hidden rounded-lg bg-[#f0f0f0]">
-              <span className="text-[24px] opacity-20">👋</span>
-              {/* The original code had a div with a span for the hand sign emoji here.
-                As per the instruction to remove <img> tags (interpreted as removing the hand sign visual),
-                this section is being removed. */}
-              <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${selectedGestures.includes(sign.id) ? 'text-[#222222]' : 'text-[#666666]'}`}>
-                {sign.name}
-              </span>
-              {selectedGestures.includes(sign.id) && (
-                <div className="absolute top-2 right-2 bg-[#222222] text-white rounded-full p-0.5">
-                  <CheckCircle2 className="w-3 h-3" />
-                </div>
-              )}
+              <img src={sign.image} alt={sign.name} className="w-full h-full object-contain p-1" />
+            </div>
+            <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${selectedGestures.includes(sign.id) ? 'text-[#222222]' : 'text-[#666666]'}`}>
+              {sign.name}
+            </span>
+            {selectedGestures.includes(sign.id) && (
+              <div className="absolute top-2 right-2 bg-[#222222] text-white rounded-full p-0.5">
+                <CheckCircle2 className="w-3 h-3" />
+              </div>
+            )}
           </button>
         ))}
       </div>
@@ -57,8 +55,8 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
           disabled={selectedGestures.length !== 4}
           onClick={onNext}
           className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${selectedGestures.length === 4
-              ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
-              : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
+            ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
+            : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
             }`}
         >
           Next <ChevronRight className="w-5 h-5 ml-2" />

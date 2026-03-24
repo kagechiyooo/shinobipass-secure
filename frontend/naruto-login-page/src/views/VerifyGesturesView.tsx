@@ -78,9 +78,7 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
                   : 'border-[#cccccc] opacity-40'
                 }`}
             >
-              <div className="w-10 h-10 flex items-center justify-center bg-[#f0f0f0] rounded-lg">
-                <span className="text-lg">👋</span>
-              </div>
+              <img src={sign?.image} alt={sign?.name} className="w-10 h-10" />
               <span className="text-[10px] font-bold uppercase">{sign?.name}</span>
               {isVerified && <CheckCircle2 className="w-4 h-4 text-green-500 absolute -top-1 -right-1 bg-white rounded-full" />}
             </div>
