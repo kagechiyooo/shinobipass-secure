@@ -13,20 +13,57 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   const getCameraErrorMessage = (err: unknown) => {
+    const errorName =
+      typeof err === 'object' && err !== null && 'name' in err && typeof err.name === 'string'
+        ? err.name
+        : null;
+
     if (!window.isSecureContext) {
       return 'Camera requires HTTPS or localhost. Open this app from https://... or http://localhost.';
     }
 
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      'name' in err &&
-      err.name === 'NotAllowedError'
-    ) {
-      return 'Camera access was blocked. Allow camera permission in your browser and reload.';
+    switch (errorName) {
+      case 'NotAllowedError':
+        return 'Camera access was blocked. Allow camera permission in your browser and reload.';
+      case 'NotReadableError':
+        return 'Camera is busy or unavailable. Close Zoom, Meet, Discord, Teams, or other camera apps and try again.';
+      case 'NotFoundError':
+        return 'No camera was found on this device. Check that a webcam is connected and enabled.';
+      case 'OverconstrainedError':
+        return 'This camera does not support the requested mode. Try another camera or reload.';
+      case 'AbortError':
+        return 'Camera startup was interrupted. Reload the page and try again.';
+      default:
+        return errorName
+          ? `Could not access camera (${errorName}). Check browser permission and camera availability.`
+          : 'Could not access camera. Please check browser permissions and camera availability.';
     }
+  };
 
-    return 'Could not access camera. Please check browser permissions and camera availability.';
+  const requestCameraStream = async () => {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+    } catch (preferredErr) {
+      const errorName =
+        typeof preferredErr === 'object' &&
+        preferredErr !== null &&
+        'name' in preferredErr &&
+        typeof preferredErr.name === 'string'
+          ? preferredErr.name
+          : null;
+
+      if (errorName === 'NotAllowedError' || errorName === 'NotReadableError') {
+        throw preferredErr;
+      }
+
+      return navigator.mediaDevices.getUserMedia({ video: true });
+    }
   };
 
   useEffect(() => {
@@ -38,13 +75,7 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
             return;
           }
 
-          const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              facingMode: 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            } 
-          });
+          const mediaStream = await requestCameraStream();
           setStream(mediaStream);
           if (videoRef.current) {
             videoRef.current.srcObject = mediaStream;
