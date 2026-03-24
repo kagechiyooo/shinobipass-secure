@@ -35,7 +35,7 @@ export function VerifyGesturesView({ selectedGestures, verifiedCount, onBack, on
       </div>
 
       {/* Top 4 Gestures Display */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-3 px-2">
         {selectedGestures.map((id, index) => {
           const sign = HAND_SIGNS.find(s => s.id === id);
           const isVerified = index < verifiedCount;
@@ -43,16 +43,22 @@ export function VerifyGesturesView({ selectedGestures, verifiedCount, onBack, on
           return (
             <div
               key={id}
-              className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center space-y-1 ${
+              className={`relative p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
                 isVerified 
                   ? 'border-green-500 bg-green-50' 
                   : isActive 
-                    ? 'border-[#222222] bg-[#f8f8f8] scale-105 shadow-md' 
+                    ? 'border-[#222222] bg-[#f8f8f8] shadow-md' 
                     : 'border-[#cccccc] opacity-40'
               }`}
             >
-              <img src={sign?.image} alt={sign?.name} className="w-10 h-10" />
-              <span className="text-[10px] font-bold uppercase">{sign?.name}</span>
+              <div className="inline-flex min-h-[4.5rem] items-center justify-center rounded-lg bg-[#f0f0f0] px-2 py-2">
+                <img
+                  src={sign?.image}
+                  alt={sign?.name}
+                  className="block w-auto h-auto max-w-[4rem] max-h-[4rem] object-contain"
+                />
+              </div>
+              <span className="text-[10px] font-bold uppercase text-center leading-tight">{sign?.name}</span>
               {isVerified && <CheckCircle2 className="w-4 h-4 text-green-500 absolute -top-1 -right-1 bg-white rounded-full" />}
             </div>
           );
