@@ -4,12 +4,14 @@ import { Logo } from '../components/Logo';
 import { Input } from '../components/Input';
 
 interface LoginViewProps {
+  username: string;
+  onUsernameChange: (value: string) => void;
   onLogin: (e: React.FormEvent) => void;
   onRegister: () => void;
   onForgot: () => void;
 }
 
-export function LoginView({ onLogin, onRegister, onForgot }: LoginViewProps) {
+export function LoginView({ username, onUsernameChange, onLogin, onRegister, onForgot }: LoginViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -27,7 +29,13 @@ export function LoginView({ onLogin, onRegister, onForgot }: LoginViewProps) {
         </p>
       </div>
       <form className="space-y-6" onSubmit={onLogin}>
-        <Input label="Email" type="email" placeholder="mail@abc.com" />
+        <Input
+          label="Username"
+          placeholder="Konoha Hero"
+          value={username}
+          onChange={(e) => onUsernameChange(e.target.value)}
+          required
+        />
         <Input label="Password" type="password" placeholder="****************" />
         <button onClick={onForgot} type="button" className="text-[13px] font-bold text-[#222222] hover:opacity-70">
           Forgot Password?

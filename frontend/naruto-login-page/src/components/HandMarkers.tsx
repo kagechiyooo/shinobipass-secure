@@ -5,10 +5,11 @@ import { HAND_CONNECTIONS, Hands, Results } from '@mediapipe/hands';
 interface HandMarkersProps {
   video: HTMLVideoElement | null;
   onHandsStateChange?: (state: { leftDetected: boolean; rightDetected: boolean; totalHands: number }) => void;
+  onLandmarksChange?: (landmarks: any[][]) => void;
   onError?: (message: string | null) => void;
 }
 
-export function HandMarkers({ video, onHandsStateChange, onError }: HandMarkersProps) {
+export function HandMarkers({ video, onHandsStateChange, onLandmarksChange, onError }: HandMarkersProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -57,6 +58,8 @@ export function HandMarkers({ video, onHandsStateChange, onError }: HandMarkersP
         rightDetected,
         totalHands: results.multiHandLandmarks?.length ?? 0,
       });
+
+      onLandmarksChange?.(results.multiHandLandmarks ?? []);
 
       results.multiHandLandmarks?.forEach((landmarks, index) => {
         const isLeft = handedness[index]?.label === 'Left';

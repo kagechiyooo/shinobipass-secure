@@ -4,11 +4,13 @@ import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { Input } from '../components/Input';
 
 interface RegisterViewProps {
+  username: string;
+  onUsernameChange: (value: string) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function RegisterView({ onBack, onNext }: RegisterViewProps) {
+export function RegisterView({ username, onUsernameChange, onBack, onNext }: RegisterViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -28,7 +30,13 @@ export function RegisterView({ onBack, onNext }: RegisterViewProps) {
           <Input label="First Name" placeholder="John" />
           <Input label="Last Name" placeholder="Doe" />
         </div>
-        <Input label="Email" type="email" placeholder="mail@abc.com" />
+        <Input
+          label="Username"
+          placeholder="Konoha Hero"
+          value={username}
+          onChange={(e) => onUsernameChange(e.target.value)}
+          required
+        />
         <Input label="Password" type="password" placeholder="****************" />
         <Input label="Confirm Password" type="password" placeholder="****************" />
         <div className="flex justify-center pt-4">

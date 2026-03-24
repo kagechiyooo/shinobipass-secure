@@ -1,11 +1,7 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { View } from './types';
+import { View, GestureSignature, User } from './types';
+import { storage } from './utils/storage';
 
 // Views
 import { LoginView } from './views/LoginView';
@@ -19,11 +15,21 @@ import { HomeView } from './views/HomeView';
 
 export default function App() {
   const [view, setView] = useState<View>('login');
+  const [username, setUsername] = useState('');
   const [selectedGestures, setSelectedGestures] = useState<string[]>([]);
+  const [gestureSignatures, setGestureSignatures] = useState<GestureSignature[]>([]);
   const [recordingIndex, setRecordingIndex] = useState(0);
   const [repetition, setRepetition] = useState(1);
   const [verifiedCount, setVerifiedCount] = useState(0);
   const [verifyContext, setVerifyContext] = useState<'login' | 'forgot'>('login');
+
+  useEffect(() => {
+    const user = storage.getCurrentUser();
+    if (user) {
+      setUsername(user.username);
+      setView('home');
+    }
+  }, []);
 
   const handleToggleGesture = (id: string) => {
     if (selectedGestures.includes(id)) {
@@ -33,22 +39,44 @@ export default function App() {
     }
   };
 
-  const handleSaveRecording = () => {
+  const handleSaveRecording = (landmarks: any[][]) => {
+    const currentSignId = selectedGestures[recordingIndex];
+    let updatedSignatures = [...gestureSignatures];
+    let existing = updatedSignatures.find(s => s.signId === currentSignId);
+
+    if (existing) {
+      existing.landmarks.push(landmarks);
+    } else {
+      updatedSignatures.push({ signId: currentSignId, landmarks: [landmarks] });
+    }
+    setGestureSignatures(updatedSignatures);
+
     if (repetition < 3) {
       setRepetition(repetition + 1);
     } else if (recordingIndex < selectedGestures.length - 1) {
       setRecordingIndex(recordingIndex + 1);
       setRepetition(1);
     } else {
+      // Registration complete - Save to storage
+      const newUser: User = {
+        username: username,
+        signatures: updatedSignatures
+      };
+      storage.saveUser(newUser);
       setView('success');
     }
   };
 
   const startGestureVerify = (context: 'login' | 'forgot') => {
-    setVerifyContext(context);
-    if (selectedGestures.length === 0) {
-      setSelectedGestures(['snake', 'dragon', 'tiger', 'bird']);
+    const user = storage.getUser(username);
+    if (!user) {
+      alert('User not found!');
+      return;
     }
+
+    setVerifyContext(context);
+    setSelectedGestures(user.signatures.map(s => s.signId));
+    setGestureSignatures(user.signatures);
     setVerifiedCount(0);
     setView('verifyGestures');
   };
@@ -63,12 +91,14 @@ export default function App() {
   };
 
   const handleVerifyStep = () => {
-    if (verifiedCount < 3) {
+    if (verifiedCount < selectedGestures.length - 1) {
       setVerifiedCount(verifiedCount + 1);
     } else {
-      setVerifiedCount(4);
+      setVerifiedCount(selectedGestures.length);
       setTimeout(() => {
         if (verifyContext === 'login') {
+          const user = storage.getUser(username);
+          if (user) storage.setCurrentUser(user);
           setView('home');
         } else {
           setView('resetPassword');
@@ -95,22 +125,26 @@ export default function App() {
         <div className="w-full max-w-[520px] py-10 lg:min-h-[760px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-2">
           <AnimatePresence mode="wait">
             {view === 'login' && (
-              <LoginView 
-                onLogin={handleLoginSubmit} 
-                onRegister={() => setView('register')} 
-                onForgot={handleForgotPassword} 
+              <LoginView
+                username={username}
+                onUsernameChange={setUsername}
+                onLogin={handleLoginSubmit}
+                onRegister={() => setView('register')}
+                onForgot={handleForgotPassword}
               />
             )}
 
             {view === 'register' && (
-              <RegisterView 
-                onBack={() => setView('login')} 
-                onNext={() => setView('selectGestures')} 
+              <RegisterView
+                username={username}
+                onUsernameChange={setUsername}
+                onBack={() => setView('login')}
+                onNext={() => setView('selectGestures')}
               />
             )}
 
             {view === 'selectGestures' && (
-              <SelectGesturesView 
+              <SelectGesturesView
                 selectedGestures={selectedGestures}
                 onToggleGesture={handleToggleGesture}
                 onBack={() => setView('register')}
@@ -119,7 +153,7 @@ export default function App() {
             )}
 
             {view === 'recordGestures' && (
-              <RecordGesturesView 
+              <RecordGesturesView
                 selectedGestures={selectedGestures}
                 recordingIndex={recordingIndex}
                 repetition={repetition}
@@ -129,8 +163,9 @@ export default function App() {
             )}
 
             {view === 'verifyGestures' && (
-              <VerifyGesturesView 
+              <VerifyGesturesView
                 selectedGestures={selectedGestures}
+                signatures={gestureSignatures}
                 verifiedCount={verifiedCount}
                 onBack={() => setView('login')}
                 onVerifyStep={handleVerifyStep}
@@ -138,7 +173,7 @@ export default function App() {
             )}
 
             {view === 'resetPassword' && (
-              <ResetPasswordView 
+              <ResetPasswordView
                 onBack={() => setView('login')}
                 onSubmit={(e) => { e.preventDefault(); setView('login'); }}
               />
@@ -149,7 +184,7 @@ export default function App() {
             )}
 
             {view === 'home' && (
-              <HomeView onLogout={() => setView('login')} />
+              <HomeView onLogout={() => { storage.setCurrentUser(null); setView('login'); }} />
             )}
           </AnimatePresence>
         </div>
