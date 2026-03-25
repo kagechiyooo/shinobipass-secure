@@ -10,7 +10,14 @@ interface VerifyGesturesViewProps {
   selectedGestures: string[];
   signatures: GestureSignature[];
   verifySequence: string[];
+  strictVerification?: boolean;
   onBack: () => void;
+  onVerifyStep: (currentStep: number, detectedSlot: number) => Promise<{
+    passed: boolean;
+    nextStep: number;
+    completed: boolean;
+    message: string;
+  }>;
   onVerifySuccess: () => void;
 }
 
@@ -35,7 +42,9 @@ export function VerifyGesturesView({
   selectedGestures,
   signatures,
   verifySequence,
+  strictVerification = false,
   onBack,
+  onVerifyStep,
   onVerifySuccess,
 }: VerifyGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -57,6 +66,7 @@ export function VerifyGesturesView({
   const currentLandmarksRef = useRef<{ landmarks: any[]; label: string }[]>([]);
   const landmarksBufferRef = useRef<{ landmarks: any[]; label: string }[][]>([]);
   const handsCountRef = useRef(0);
+  const verifyRequestInFlightRef = useRef(false);
 
   useEffect(() => {
     if (currentLandmarks.length > 0) {
@@ -113,6 +123,12 @@ export function VerifyGesturesView({
   const activeTargetId = verifySequence[verifiedCount] ?? null;
   const activeTargetIndex = activeTargetId ? selectedGestures.findIndex((id) => id === activeTargetId) : -1;
   const activeTargetSlot = activeTargetIndex >= 0 ? activeTargetIndex + 1 : null;
+  const matchThreshold = strictVerification ? 0.38 : MATCH_THRESHOLD;
+  const failThreshold = strictVerification ? 0.68 : FAIL_THRESHOLD;
+  const bestMargin = strictVerification ? 0.06 : BEST_MARGIN;
+  const targetMargin = strictVerification ? 0.02 : TARGET_MARGIN;
+  const progressStep = strictVerification ? 25 : PROGRESS_STEP;
+  const failStep = strictVerification ? 16 : FAIL_STEP;
 
   const getSignatureScore = (
     signature: GestureSignature,
@@ -180,39 +196,17 @@ export function VerifyGesturesView({
       const hasSafeMargin = secondBestMatch ? (secondBestMatch.score - bestMatch.score) >= BEST_MARGIN : true;
       const finalScore = bestMatch?.score ?? 999;
       const targetScore = targetMatch?.score ?? 999;
-      const targetIsCloseEnough = targetScore <= MATCH_THRESHOLD;
-      const targetAlmostBest = bestMatch ? (targetScore - bestMatch.score) <= TARGET_MARGIN : false;
+      const targetIsCloseEnough = targetScore <= matchThreshold;
+      const targetAlmostBest = bestMatch ? (targetScore - bestMatch.score) <= targetMargin : false;
       const isConfidentTargetMatch = targetIsCloseEnough && (isTargetBestMatch || targetAlmostBest);
-      const isConfidentWrongMatch = !isConfidentTargetMatch && !isTargetBestMatch && finalScore <= FAIL_THRESHOLD && hasSafeMargin;
+      const isConfidentWrongMatch = !isConfidentTargetMatch && !isTargetBestMatch && finalScore <= failThreshold && hasSafeMargin;
 
       setLastScore(targetScore);
 
       if (isConfidentTargetMatch) {
         setFailProgress(0);
         setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} detected. Hold steady.`);
-        setHoldProgress((prev) => {
-          const next = Math.min(100, prev + PROGRESS_STEP);
-          if (next >= 100) {
-            const nextVerifiedCount = verifiedCount + 1;
-            setIsAdvancingStep(true);
-            setHoldProgress(0);
-
-            if (nextVerifiedCount >= verifySequence.length) {
-              setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} matched. Login successful.`);
-              timeoutRef.current = window.setTimeout(() => onVerifySuccess(), 500);
-            } else {
-              const nextTargetId = verifySequence[nextVerifiedCount];
-              const nextTargetIndex = selectedGestures.findIndex((id) => id === nextTargetId);
-              setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} matched. Next: gesture ${nextTargetIndex + 1}.`);
-              timeoutRef.current = window.setTimeout(() => {
-                setVerifiedCount(nextVerifiedCount);
-                setIsAdvancingStep(false);
-              }, 500);
-            }
-            return 0;
-          }
-          return next;
-        });
+        setHoldProgress((prev) => Math.min(100, prev + progressStep));
         return;
       }
 
@@ -220,7 +214,7 @@ export function VerifyGesturesView({
         setHoldProgress(0);
         setStatusMessage(`That looks closer to gesture ${selectedGestures.findIndex((id) => id === bestMatch.signId) + 1}.`);
         setFailProgress((prev) => {
-          const next = Math.min(100, prev + FAIL_STEP);
+          const next = Math.min(100, prev + failStep);
           if (next >= 100) {
             failAttempt('Different gesture detected.');
             return 0;
@@ -249,11 +243,57 @@ export function VerifyGesturesView({
     cooldownRemaining,
     isAdvancingStep,
     isCameraActive,
+    onVerifyStep,
     onVerifySuccess,
     selectedGestures,
+    strictVerification,
     verifySequence,
     verifiedCount,
   ]);
+
+  useEffect(() => {
+    if (holdProgress < 100 || isAdvancingStep || verifyRequestInFlightRef.current || activeTargetSlot === null) {
+      return;
+    }
+
+    verifyRequestInFlightRef.current = true;
+    setIsAdvancingStep(true);
+    setStatusMessage(`Gesture ${activeTargetSlot} matched. Confirming with server...`);
+
+    void onVerifyStep(verifiedCount, activeTargetSlot)
+      .then((result) => {
+        if (!result.passed) {
+          verifyRequestInFlightRef.current = false;
+          setIsAdvancingStep(false);
+          setHoldProgress(0);
+          failAttempt(result.message || 'Different gesture detected.');
+          return;
+        }
+
+        if (result.completed) {
+          verifyRequestInFlightRef.current = false;
+          setStatusMessage(`Gesture ${activeTargetSlot} matched. Login successful.`);
+          timeoutRef.current = window.setTimeout(() => onVerifySuccess(), 500);
+          return;
+        }
+
+        const nextTargetId = verifySequence[result.nextStep];
+        const nextTargetIndex = selectedGestures.findIndex((id) => id === nextTargetId);
+        setStatusMessage(`Gesture ${activeTargetSlot} matched. Next: gesture ${nextTargetIndex + 1}.`);
+        timeoutRef.current = window.setTimeout(() => {
+          verifyRequestInFlightRef.current = false;
+          setVerifiedCount(result.nextStep);
+          setHoldProgress(0);
+          setIsAdvancingStep(false);
+        }, 500);
+      })
+      .catch((error) => {
+        verifyRequestInFlightRef.current = false;
+        setHoldProgress(0);
+        setIsAdvancingStep(false);
+        setStatusMessage(error instanceof Error ? error.message : 'Failed to verify gesture step.');
+      });
+  }, [activeTargetSlot, holdProgress, isAdvancingStep, onVerifyStep, onVerifySuccess, selectedGestures, verifySequence, verifiedCount]);
 
   return (
     <motion.div

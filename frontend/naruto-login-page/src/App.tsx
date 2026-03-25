@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { View, GestureSignature, User } from './types';
 import { storage } from './utils/storage';
+import { api } from './lib/api';
 
 // Views
 import { LoginView } from './views/LoginView';
@@ -17,18 +18,17 @@ import { HomeView } from './views/HomeView';
 const GESTURE_SLOT_COUNT = 4;
 const GESTURE_SLOT_IDS = Array.from({ length: GESTURE_SLOT_COUNT }, (_, index) => `gesture-${index + 1}`);
 
-const shuffleGestures = (gestureIds: string[]) => {
-  const shuffled = [...gestureIds];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  return shuffled;
-};
-
 export default function App() {
   const [view, setView] = useState<View>('login');
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetConfirmPasswordValue, setResetConfirmPasswordValue] = useState('');
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [loginStatusMessage, setLoginStatusMessage] = useState<string | null>(null);
+  const [loginLockRemaining, setLoginLockRemaining] = useState(0);
   const [selectedGestures, setSelectedGestures] = useState<string[]>(GESTURE_SLOT_IDS);
   const [gestureSignatures, setGestureSignatures] = useState<GestureSignature[]>([]);
   const [recordingIndex, setRecordingIndex] = useState(0);
@@ -38,13 +38,45 @@ export default function App() {
 
   useEffect(() => {
     const user = storage.getCurrentUser();
-    if (user) {
+    const savedAccessToken = storage.getAccessToken();
+    if (user && savedAccessToken) {
       setUsername(user.username);
+      setAccessToken(savedAccessToken);
       setView('home');
     }
   }, []);
 
-  const handleSaveRecording = (hands: { landmarks: any[]; label: string }[], snapshot: number[] | null) => {
+  useEffect(() => {
+    if (view === 'home' && !accessToken) {
+      setView('login');
+    }
+
+    if (view === 'verifyGestures' && !challengeToken) {
+      setView('login');
+    }
+
+    if (view === 'resetPassword' && !accessToken) {
+      setView('login');
+    }
+  }, [accessToken, challengeToken, view]);
+
+  useEffect(() => {
+    if (loginLockRemaining <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setLoginLockRemaining((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginLockRemaining]);
+
+  const handleSaveRecording = async (hands: { landmarks: any[]; label: string }[], snapshot: number[] | null) => {
     const currentSignId = selectedGestures[recordingIndex];
     let updatedSignatures = [...gestureSignatures];
     let existing = updatedSignatures.find(s => s.signId === currentSignId);
@@ -75,56 +107,115 @@ export default function App() {
         setRecordingIndex(recordingIndex + 1);
         setRepetition(1);
       } else {
-        const newUser: User = {
-          username: username,
-          signatures: updatedSignatures
-        };
-        storage.saveUser(newUser);
-        storage.setCurrentUser(newUser);
-        setView('home');
+        try {
+          const gestures = updatedSignatures.map((signature) => ({
+            landmark_template: signature.captures[0] ?? [],
+            snapshot_template: signature.snapshots && signature.snapshots.length > 0
+              ? signature.snapshots.reduce((acc, current) => acc.map((value, index) => value + (current[index] ?? 0)))
+                  .map((sum) => sum / signature.snapshots!.length)
+              : null,
+          }));
+
+          await api.register({
+            username,
+            password,
+            gestures,
+          });
+
+          setChallengeToken(null);
+          setAccessToken(null);
+          storage.setCurrentUser(null);
+          storage.setAccessToken(null);
+          setPassword('');
+          setConfirmPassword('');
+          setView('success');
+        } catch (error) {
+          alert(error instanceof Error ? error.message : 'Register failed');
+        }
       }
     }
   };
 
-  const startGestureVerify = (context: 'login' | 'forgot') => {
-    const user = storage.getUser(username);
-    if (!user) {
-      alert('User not found!');
-      return;
-    }
+  const startGestureVerify = async (context: 'login' | 'forgot') => {
+    try {
+      const loginResult = context === 'login'
+        ? await api.login({ username, password })
+        : await api.forgotPasswordChallenge({ username });
+      const orderedSignatures = loginResult.gestures
+        .sort((a, b) => a.slot_number - b.slot_number)
+        .map((gesture) => ({
+          signId: `gesture-${gesture.slot_number}`,
+          captures: [Array.isArray(gesture.landmark_template) ? gesture.landmark_template as any[] : []],
+          snapshots: gesture.snapshot_template ? [gesture.snapshot_template] : [],
+        }));
 
-    setVerifyContext(context);
-    const orderedSignatures = [...user.signatures].sort((a, b) => a.signId.localeCompare(b.signId));
-    if (orderedSignatures.length === 0) {
-      alert('No saved gestures found for this user.');
-      return;
-    }
+      setVerifyContext(context);
+      setChallengeToken(loginResult.challengeToken);
+      setAccessToken(null);
+      setLoginStatusMessage(null);
+      setLoginLockRemaining(0);
+      setSelectedGestures(orderedSignatures.map((signature) => signature.signId));
+      setGestureSignatures(orderedSignatures);
+      setVerifySequence(loginResult.sequence.map((slotNumber) => `gesture-${slotNumber}`));
+      setView('verifyGestures');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed';
+      setLoginStatusMessage(message);
 
-    setSelectedGestures(orderedSignatures.map((signature) => signature.signId));
-    setGestureSignatures(orderedSignatures);
-    setVerifySequence(shuffleGestures(orderedSignatures.map((signature) => signature.signId)));
-    setView('verifyGestures');
+      const lockMatch = message.match(/(\d+)\s*seconds?/i);
+      if (lockMatch) {
+        setLoginLockRemaining(Number(lockMatch[1]));
+      }
+    }
   };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    startGestureVerify('login');
+    void startGestureVerify('login');
   };
 
   const handleForgotPassword = () => {
-    startGestureVerify('forgot');
+    void startGestureVerify('forgot');
   };
 
   const handleVerifySuccess = () => {
     setTimeout(() => {
       if (verifyContext === 'login') {
-        const user = storage.getUser(username);
-        if (user) storage.setCurrentUser(user);
+        storage.setCurrentUser({ username, signatures: gestureSignatures });
+        if (accessToken) {
+          storage.setAccessToken(accessToken);
+        }
+        setPassword('');
+        setChallengeToken(null);
         setView('home');
       } else {
+        setResetPasswordValue('');
+        setResetConfirmPasswordValue('');
         setView('resetPassword');
       }
     }, 500);
+  };
+
+  const handleVerifyStep = async (_currentStep: number, detectedSlot: number) => {
+    if (!challengeToken) {
+      throw new Error('Missing challenge token');
+    }
+
+    const result = await api.verifyGestureStep({
+      detected_slot: detectedSlot,
+    }, challengeToken);
+
+    if (result.accessToken) {
+      setAccessToken(result.accessToken);
+      storage.setAccessToken(result.accessToken);
+    }
+
+    return {
+      passed: result.passed,
+      nextStep: result.next_step,
+      completed: result.completed,
+      message: result.message,
+    };
   };
 
   return (
@@ -147,9 +238,22 @@ export default function App() {
             {view === 'login' && (
               <LoginView
                 username={username}
+                password={password}
+                loginStatusMessage={loginStatusMessage}
+                loginLockRemaining={loginLockRemaining}
                 onUsernameChange={setUsername}
+                onPasswordChange={setPassword}
                 onLogin={handleLoginSubmit}
                 onRegister={() => {
+                  setLoginStatusMessage(null);
+                  setLoginLockRemaining(0);
+                  setPassword('');
+                  setConfirmPassword('');
+                  setResetPasswordValue('');
+                  setResetConfirmPasswordValue('');
+                  setChallengeToken(null);
+                  setAccessToken(null);
+                  storage.setAccessToken(null);
                   setSelectedGestures(GESTURE_SLOT_IDS);
                   setGestureSignatures([]);
                   setRecordingIndex(0);
@@ -163,9 +267,25 @@ export default function App() {
             {view === 'register' && (
               <RegisterView
                 username={username}
+                password={password}
+                confirmPassword={confirmPassword}
                 onUsernameChange={setUsername}
-                onBack={() => setView('login')}
+                onPasswordChange={setPassword}
+                onConfirmPasswordChange={setConfirmPassword}
+                onBack={() => {
+                  setLoginStatusMessage(null);
+                  setLoginLockRemaining(0);
+                  setView('login');
+                }}
                 onNext={() => {
+                  if (!username || !password) {
+                    alert('Username and password are required.');
+                    return;
+                  }
+                  if (password !== confirmPassword) {
+                    alert('Passwords do not match.');
+                    return;
+                  }
                   setSelectedGestures(GESTURE_SLOT_IDS);
                   setGestureSignatures([]);
                   setRecordingIndex(0);
@@ -207,15 +327,45 @@ export default function App() {
                 selectedGestures={selectedGestures}
                 signatures={gestureSignatures}
                 verifySequence={verifySequence}
+                strictVerification={verifyContext === 'forgot'}
                 onBack={() => setView('login')}
+                onVerifyStep={handleVerifyStep}
                 onVerifySuccess={handleVerifySuccess}
               />
             )}
 
             {view === 'resetPassword' && (
               <ResetPasswordView
+                password={resetPasswordValue}
+                confirmPassword={resetConfirmPasswordValue}
+                onPasswordChange={setResetPasswordValue}
+                onConfirmPasswordChange={setResetConfirmPasswordValue}
                 onBack={() => setView('login')}
-                onSubmit={(e) => { e.preventDefault(); setView('login'); }}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+
+                  if (!resetPasswordValue) {
+                    alert('New password is required.');
+                    return;
+                  }
+
+                  if (resetPasswordValue !== resetConfirmPasswordValue) {
+                    alert('Passwords do not match.');
+                    return;
+                  }
+
+                  try {
+                    await api.resetPassword({
+                      newPassword: resetPasswordValue,
+                    }, accessToken ?? '');
+                    setResetPasswordValue('');
+                    setResetConfirmPasswordValue('');
+                    setPassword('');
+                    setView('success');
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : 'Reset password failed');
+                  }
+                }}
               />
             )}
 
@@ -224,7 +374,16 @@ export default function App() {
             )}
 
             {view === 'home' && (
-              <HomeView onLogout={() => { storage.setCurrentUser(null); setView('login'); }} />
+              <HomeView onLogout={() => {
+                storage.setCurrentUser(null);
+                storage.setAccessToken(null);
+                setPassword('');
+                setResetPasswordValue('');
+                setResetConfirmPasswordValue('');
+                setChallengeToken(null);
+                setAccessToken(null);
+                setView('login');
+              }} />
             )}
           </AnimatePresence>
         </div>

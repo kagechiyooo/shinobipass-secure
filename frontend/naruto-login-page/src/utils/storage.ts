@@ -2,6 +2,7 @@ import { User } from '../types';
 
 const USERS_KEY = 'shinobipass_users';
 const CURRENT_USER_KEY = 'shinobipass_current_user';
+const ACCESS_TOKEN_KEY = 'shinobipass_access_token';
 
 export const storage = {
     getUsers: (): User[] => {
@@ -49,5 +50,17 @@ export const storage = {
         } catch (e) {
             return null;
         }
+    },
+
+    setAccessToken: (token: string | null) => {
+        if (token) {
+            localStorage.setItem(ACCESS_TOKEN_KEY, token);
+        } else {
+            localStorage.removeItem(ACCESS_TOKEN_KEY);
+        }
+    },
+
+    getAccessToken: (): string | null => {
+        return localStorage.getItem(ACCESS_TOKEN_KEY);
     }
 };

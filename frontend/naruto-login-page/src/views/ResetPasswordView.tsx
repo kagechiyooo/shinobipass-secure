@@ -4,11 +4,22 @@ import { ArrowLeft } from 'lucide-react';
 import { Input } from '../components/Input';
 
 interface ResetPasswordViewProps {
+  password: string;
+  confirmPassword: string;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
   onBack: () => void;
   onSubmit: (e: React.FormEvent) => void;
 }
 
-export function ResetPasswordView({ onBack, onSubmit }: ResetPasswordViewProps) {
+export function ResetPasswordView({
+  password,
+  confirmPassword,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onBack,
+  onSubmit,
+}: ResetPasswordViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -24,8 +35,22 @@ export function ResetPasswordView({ onBack, onSubmit }: ResetPasswordViewProps) 
         <p className="text-[#999999]">Set a new secure password for your account</p>
       </div>
       <form className="space-y-4" onSubmit={onSubmit}>
-        <Input label="New Password" type="password" placeholder="****************" />
-        <Input label="Confirm New Password" type="password" placeholder="****************" />
+        <Input
+          label="New Password"
+          type="password"
+          placeholder="****************"
+          value={password}
+          onChange={(e) => onPasswordChange(e.target.value)}
+          required
+        />
+        <Input
+          label="Confirm New Password"
+          type="password"
+          placeholder="****************"
+          value={confirmPassword}
+          onChange={(e) => onConfirmPasswordChange(e.target.value)}
+          required
+        />
         <button type="submit" className="w-full bg-[#222222] text-white py-4 rounded-lg font-bold text-[16px] shadow-md mt-4">
           Update Password
         </button>

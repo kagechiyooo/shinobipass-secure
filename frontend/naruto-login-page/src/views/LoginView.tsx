@@ -5,13 +5,27 @@ import { Input } from '../components/Input';
 
 interface LoginViewProps {
   username: string;
+  password: string;
+  loginStatusMessage: string | null;
+  loginLockRemaining: number;
   onUsernameChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
   onLogin: (e: React.FormEvent) => void;
   onRegister: () => void;
   onForgot: () => void;
 }
 
-export function LoginView({ username, onUsernameChange, onLogin, onRegister, onForgot }: LoginViewProps) {
+export function LoginView({
+  username,
+  password,
+  loginStatusMessage,
+  loginLockRemaining,
+  onUsernameChange,
+  onPasswordChange,
+  onLogin,
+  onRegister,
+  onForgot,
+}: LoginViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -36,7 +50,14 @@ export function LoginView({ username, onUsernameChange, onLogin, onRegister, onF
           onChange={(e) => onUsernameChange(e.target.value)}
           required
         />
-        <Input label="Password" type="password" placeholder="****************" />
+        <Input
+          label="Password"
+          type="password"
+          placeholder="****************"
+          value={password}
+          onChange={(e) => onPasswordChange(e.target.value)}
+          required
+        />
         <button onClick={onForgot} type="button" className="text-[13px] font-bold text-[#222222] hover:opacity-70">
           Forgot Password?
         </button>
@@ -44,6 +65,16 @@ export function LoginView({ username, onUsernameChange, onLogin, onRegister, onF
           Login
         </button>
       </form>
+      {(loginStatusMessage || loginLockRemaining > 0) && (
+        <div className={`rounded-2xl border px-5 py-4 text-sm ${
+          loginLockRemaining > 0
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : 'border-[#ececec] bg-[#fafafa] text-[#666666]'
+        }`}>
+          {loginStatusMessage && <p>{loginStatusMessage}</p>}
+          {loginLockRemaining > 0 && <p className={loginStatusMessage ? 'mt-1' : ''}>Try again in {loginLockRemaining}s</p>}
+        </div>
+      )}
       <p className="text-center text-[#999999] text-[15px]">
         Not Registered Yet?{' '}
         <button type="button" onClick={onRegister} className="font-bold text-[#222222] hover:underline">
