@@ -5,12 +5,25 @@ import { Input } from '../components/Input';
 
 interface RegisterViewProps {
   username: string;
+  password: string;
+  confirmPassword: string;
   onUsernameChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function RegisterView({ username, onUsernameChange, onBack, onNext }: RegisterViewProps) {
+export function RegisterView({
+  username,
+  password,
+  confirmPassword,
+  onUsernameChange,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onBack,
+  onNext,
+}: RegisterViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -37,8 +50,22 @@ export function RegisterView({ username, onUsernameChange, onBack, onNext }: Reg
           onChange={(e) => onUsernameChange(e.target.value)}
           required
         />
-        <Input label="Password" type="password" placeholder="****************" />
-        <Input label="Confirm Password" type="password" placeholder="****************" />
+        <Input
+          label="Password"
+          type="password"
+          placeholder="****************"
+          value={password}
+          onChange={(e) => onPasswordChange(e.target.value)}
+          required
+        />
+        <Input
+          label="Confirm Password"
+          type="password"
+          placeholder="****************"
+          value={confirmPassword}
+          onChange={(e) => onConfirmPasswordChange(e.target.value)}
+          required
+        />
         <div className="flex justify-center pt-4">
           <button
             type="button"
