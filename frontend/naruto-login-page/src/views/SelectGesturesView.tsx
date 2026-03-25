@@ -22,19 +22,18 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Account Details
       </button>
       <div className="space-y-2">
-        <h1 className="text-[28px] font-bold text-[#444444]">Select 4 Hand Signs</h1>
-        <p className="text-[#999999]">Choose exactly 4 gestures for your security pattern ({selectedGestures.length}/4)</p>
+        <h1 className="text-[28px] font-bold text-[#444444]">Select 1 Hand Sign</h1>
+        <p className="text-[#999999]">Choose exactly 1 gesture for your security pattern ({selectedGestures.length}/1)</p>
       </div>
       <div className="grid grid-cols-3 gap-4 justify-items-center">
         {HAND_SIGNS.map((sign) => (
           <button
             key={sign.id}
             onClick={() => onToggleGesture(sign.id)}
-            className={`relative w-fit max-w-full min-w-[8.5rem] px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 overflow-hidden ${
-              selectedGestures.includes(sign.id)
+            className={`relative w-fit max-w-full min-w-[8.5rem] px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 overflow-hidden ${selectedGestures.includes(sign.id)
                 ? 'border-[#222222] bg-green-100'
                 : 'border-[#cccccc] bg-white hover:border-[#999999]'
-            }`}
+              }`}
           >
             <div className={`absolute inset-0 bg-green-500 opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-10' : ''}`} />
             <div className="relative z-10 inline-flex items-center justify-center overflow-hidden rounded-lg bg-[#f0f0f0] px-2 py-2">
@@ -48,13 +47,12 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
       </div>
       <div className="flex justify-center pt-6">
         <button
-          disabled={selectedGestures.length !== 4}
+          disabled={selectedGestures.length !== 1}
           onClick={onNext}
-          className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${
-            selectedGestures.length === 4
+          className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${selectedGestures.length === 1
               ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
               : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
-          }`}
+            }`}
         >
           Next <ChevronRight className="w-5 h-5 ml-2" />
         </button>

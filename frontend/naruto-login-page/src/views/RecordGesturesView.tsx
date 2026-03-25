@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Camera, Save } from 'lucide-react';
+import { ArrowLeft, Camera, Check } from 'lucide-react';
 import { HAND_SIGNS } from '../constants';
 import { HandMarkers } from '../components/HandMarkers';
 import { CameraFeed } from '../components/CameraFeed';
@@ -18,7 +18,43 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
   const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
   const [currentLandmarks, setCurrentLandmarks] = useState<any[][]>([]);
   const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
+  const [autoSaveProgress, setAutoSaveProgress] = useState(0); // 0 to 100
+  const [lastSeenHands, setLastSeenHands] = useState<number>(Date.now());
+  const landmarksRef = React.useRef<any[][]>([]);
   const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
+
+  React.useEffect(() => {
+    landmarksRef.current = currentLandmarks;
+  }, [currentLandmarks]);
+
+  React.useEffect(() => {
+    if (handsState.totalHands > 0) {
+      setLastSeenHands(Date.now());
+    }
+  }, [handsState.totalHands]);
+
+  React.useEffect(() => {
+    let interval: any;
+
+    // Condition: Must have hands AND be active
+    const canStartTimer = isCameraActive && handsState.totalHands > 0;
+
+    if (canStartTimer) {
+      interval = setInterval(() => {
+        setAutoSaveProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            onSave(landmarksRef.current);
+            return 0;
+          }
+          return prev + 10;
+        });
+      }, 100);
+    } else {
+      setAutoSaveProgress(0);
+    }
+    return () => clearInterval(interval);
+  }, [isCameraActive, handsState.totalHands > 0, onSave]);
 
   return (
     <motion.div
@@ -86,10 +122,42 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
                   onLandmarksChange={setCurrentLandmarks}
                   onError={setHandTrackingError}
                 />
-                <div className="absolute top-4 left-4 flex items-center space-x-2 z-20">
-                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-bold uppercase tracking-tighter">
-                    {handTrackingError ?? (handsState.totalHands === 2 ? '2 Hands Tracked' : 'Waiting For 2 Hands')}
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                  {autoSaveProgress > 0 && (
+                    <div className="relative w-24 h-24">
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle
+                          cx="48"
+                          cy="48"
+                          r="40"
+                          stroke="white"
+                          strokeWidth="8"
+                          fill="transparent"
+                          className="opacity-20"
+                        />
+                        <circle
+                          cx="48"
+                          cy="48"
+                          r="40"
+                          stroke="#FF6321"
+                          strokeWidth="8"
+                          fill="transparent"
+                          strokeDasharray={251.2}
+                          strokeDashoffset={251.2 - (251.2 * autoSaveProgress) / 100}
+                          className="transition-all duration-100 ease-linear"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-white font-bold">Auto</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="absolute top-4 left-4 flex items-center space-x-2 z-30 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                  <div className={`w-2 h-2 rounded-full ${handsState.totalHands > 0 ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">
+                    {handTrackingError ?? (handsState.totalHands > 0 ? 'Target Locked' : 'Show Hand(s)')}
                   </span>
                 </div>
                 <div className="absolute top-4 right-4 flex gap-2">
@@ -107,16 +175,14 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
       </div>
 
       <div className="flex justify-center pt-4">
-        <button
-          onClick={() => onSave(currentLandmarks)}
-          disabled={!isCameraActive || handsState.totalHands < 2}
-          className={`px-16 py-4 rounded-lg font-bold flex items-center shadow-lg transition-all ${isCameraActive && handsState.totalHands === 2
-              ? 'bg-[#222222] text-white hover:bg-black'
-              : 'bg-[#dddddd] text-[#999999] cursor-not-allowed'
-            }`}
-        >
-          <Save className="w-5 h-5 mr-2" /> Save Recording
-        </button>
+        <div className={`px-10 py-4 rounded-xl font-bold flex items-center transition-all ${handsState.totalHands > 0 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'
+          }`}>
+          {handsState.totalHands > 0 ? (
+            <>Hold steady to capture... {Math.max(0, 1 - (autoSaveProgress / 100)).toFixed(1)}s</>
+          ) : (
+            <>Waiting for hand detection</>
+          )}
+        </div>
       </div>
     </motion.div>
   );

@@ -1,6 +1,8 @@
 import { HandSign } from './types';
 
 export const HAND_SIGNS: HandSign[] = [
+  { id: 'palm', name: 'Palm (ง่าย)', image: '/hand-signs/palm.png' },
+  { id: 'fist', name: 'Fist (ง่าย)', image: '/hand-signs/fist.png' },
   { id: 'rat', name: 'Rat', image: '/hand-signs/rat.png' },
   { id: 'ox', name: 'Ox', image: '/hand-signs/ox.png' },
   { id: 'tiger', name: 'Tiger', image: '/hand-signs/tiger.png' },

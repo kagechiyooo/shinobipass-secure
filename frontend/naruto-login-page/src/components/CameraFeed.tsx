@@ -38,12 +38,12 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
             return;
           }
 
-          const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
+          const mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
               facingMode: 'user',
               width: { ideal: 1280 },
               height: { ideal: 720 }
-            } 
+            }
           });
           setStream(mediaStream);
           if (videoRef.current) {
@@ -82,7 +82,7 @@ export function CameraFeed({ isActive, children }: CameraFeedProps) {
           <CameraOff className="w-8 h-8 mx-auto mb-2 opacity-50" />
           <p className="text-xs text-red-400">{error}</p>
         </div>
-        ) : (
+      ) : (
         <>
           <video
             ref={(node) => {

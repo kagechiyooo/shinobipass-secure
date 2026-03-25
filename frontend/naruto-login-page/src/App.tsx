@@ -33,9 +33,9 @@ export default function App() {
 
   const handleToggleGesture = (id: string) => {
     if (selectedGestures.includes(id)) {
-      setSelectedGestures(selectedGestures.filter(g => g !== id));
-    } else if (selectedGestures.length < 4) {
-      setSelectedGestures([...selectedGestures, id]);
+      setSelectedGestures([]);
+    } else {
+      setSelectedGestures([id]);
     }
   };
 
@@ -57,13 +57,14 @@ export default function App() {
       setRecordingIndex(recordingIndex + 1);
       setRepetition(1);
     } else {
-      // Registration complete - Save to storage
+      // Registration complete - Save to storage and login immediately
       const newUser: User = {
         username: username,
         signatures: updatedSignatures
       };
       storage.saveUser(newUser);
-      setView('success');
+      storage.setCurrentUser(newUser); // Log in immediately
+      setView('home');
     }
   };
 
