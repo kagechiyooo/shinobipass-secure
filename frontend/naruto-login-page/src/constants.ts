@@ -16,3 +16,5 @@ export const HAND_SIGNS: HandSign[] = [
   { id: 'dog', name: 'Dog', image: '/hand-signs/dog.png' },
   { id: 'boar', name: 'Boar', image: '/hand-signs/boar.png' },
 ];
+
+export const FINGER_NAMES = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];

@@ -16,21 +16,32 @@ export interface HandSign {
   image: string;
   validationRules?: FingerStatus[]; // Array of 5 finger statuses [Thumb, Index, Middle, Ring, Pinky]
 }
-
 export interface Landmark {
   x: number;
   y: number;
   z: number;
 }
 
+export interface HandFrame {
+  landmarks: Landmark[];
+  timestamp: number;
+  label: string;
+}
+
 export interface GestureSignature {
   signId: string;
-  captures: { landmarks: Landmark[]; label: string }[][]; // Array of multi-hand captures
-  proportions?: number[]; // Anatomical ratios (biometric)
+  captures: HandFrame[][]; // Multi-repetition captures (each capture is a sequence of frames)
+  trajectories?: Landmark[][];
+  proportions?: number[];
 }
 
 export interface User {
   username: string;
   signatures: GestureSignature[];
-  registrationTiming?: number[]; // Time intervals between signs (ms)
+  biometricProfile?: {
+    avgShape: number[];
+    avgTiming: number[];
+    variance: number;
+  };
+  registrationTiming?: number[];
 }

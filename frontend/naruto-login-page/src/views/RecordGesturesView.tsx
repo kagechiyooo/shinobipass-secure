@@ -1,50 +1,63 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { ArrowLeft, Camera, Check } from 'lucide-react';
-import { HAND_SIGNS } from '../constants';
-import { gestureUtils } from '../utils/gesture';
-import { HandMarkers } from '../components/HandMarkers';
+import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Camera, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { HAND_SIGNS, FINGER_NAMES } from '../constants';
 import { CameraFeed } from '../components/CameraFeed';
+import { HandMarkers } from '../components/HandMarkers';
+import { gestureUtils } from '../utils/gesture';
+import { HandFrame } from '../types';
 
 interface RecordGesturesViewProps {
+  username: string;
   selectedGestures: string[];
   recordingIndex: number;
   repetition: number;
+  onSave: (sequence: HandFrame[]) => void;
   onBack: () => void;
-  onSave: (hands: { landmarks: any[]; label: string }[]) => void;
 }
 
-export function RecordGesturesView({ selectedGestures, recordingIndex, repetition, onBack, onSave }: RecordGesturesViewProps) {
-  const [isCameraActive, setIsCameraActive] = useState(false);
-  const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
-  const [currentLandmarks, setCurrentLandmarks] = useState<{ landmarks: any[]; label: string }[]>([]);
-  const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
-  const [autoSaveProgress, setAutoSaveProgress] = useState(0); // 0 to 100
-  const [lastSeenHands, setLastSeenHands] = useState<number>(Date.now());
-  const landmarksRef = React.useRef<{ landmarks: any[]; label: string }[]>([]);
+export function RecordGesturesView({
+  username,
+  selectedGestures,
+  recordingIndex,
+  repetition,
+  onSave,
+  onBack
+}: RecordGesturesViewProps) {
+  const [isCameraActive, setIsCameraActive] = React.useState(false);
+  const [handsState, setHandsState] = React.useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
+  const [currentLandmarks, setCurrentLandmarks] = React.useState<{ landmarks: any[]; label: string }[]>([]);
+  const [handTrackingError, setHandTrackingError] = React.useState<string | null>(null);
+  const [lastSeenHands, setLastSeenHands] = React.useState<number>(0);
+  const [autoSaveProgress, setAutoSaveProgress] = React.useState(0);
+  const sequenceRef = React.useRef<HandFrame[]>([]);
+
   const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
 
   React.useEffect(() => {
-    landmarksRef.current = currentLandmarks;
-  }, [currentLandmarks]);
-
-  React.useEffect(() => {
-    if (handsState.totalHands > 0) {
-      setLastSeenHands(Date.now());
-    }
+    if (handsState.totalHands > 0) setLastSeenHands(Date.now());
   }, [handsState.totalHands]);
+
+  // Capture sub-frame sequence
+  React.useEffect(() => {
+    if (autoSaveProgress > 0 && currentLandmarks.length > 0) {
+      sequenceRef.current.push({
+        landmarks: currentLandmarks[0].landmarks,
+        timestamp: Date.now(),
+        label: currentLandmarks[0].label
+      });
+    }
+  }, [autoSaveProgress, currentLandmarks]);
 
   React.useEffect(() => {
     let interval: any;
-
     if (isCameraActive && handsState.totalHands > 0) {
       interval = setInterval(() => {
-        const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
         if (currentSign?.validationRules) {
           const validation = gestureUtils.validateRule(currentLandmarks, currentSign.validationRules);
           if (!validation.valid) {
-            setAutoSaveProgress(0);
             setHandTrackingError(validation.message);
+            // Stalling logic - don't reset progress
             return;
           }
         }
@@ -53,147 +66,109 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
         setAutoSaveProgress((prev) => {
           if (prev >= 100) {
             clearInterval(interval);
-            onSave(landmarksRef.current);
+            onSave([...sequenceRef.current]);
+            sequenceRef.current = [];
             return 0;
           }
-          return prev + 10; // 1000ms to capture (10 steps of 100ms)
+          return prev + 20; // 500ms duration per rep
         });
       }, 100);
     } else {
       setAutoSaveProgress(0);
+      sequenceRef.current = [];
     }
     return () => clearInterval(interval);
-  }, [isCameraActive, handsState.totalHands, currentLandmarks, recordingIndex, selectedGestures, onSave]);
+  }, [isCameraActive, handsState.totalHands, currentLandmarks, recordingIndex, selectedGestures, onSave, currentSign]);
+
+  const isHandsLost = isCameraActive && Date.now() - lastSeenHands > 3000;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="space-y-8 text-center"
-    >
-      <div className="flex justify-start">
-        <button onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Selection
-        </button>
-      </div>
-      <div className="space-y-2">
-        <h1 className="text-[28px] font-bold text-[#444444]">Record Gestures</h1>
-        <p className="text-[#999999]">Perform the sign and save (2 times each)</p>
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[32px] font-black text-[#1a1a1a] tracking-tight uppercase">Master Profile Training</h1>
+          <p className="text-[#666666] font-medium">Capture repetition <span className="text-red-500 font-bold">{repetition}/3</span> for stability</p>
+        </div>
+        <div className="flex gap-1.5">
+          {selectedGestures.map((_, i) => (
+            <div key={i} className={`w-8 h-1.5 rounded-full transition-all duration-500 ${i < recordingIndex ? 'bg-green-500' : i === recordingIndex ? 'bg-red-500 w-12' : 'bg-[#f0f0f0]'}`} />
+          ))}
+        </div>
       </div>
 
-      <div className="bg-[#f8f8f8] rounded-3xl p-10 space-y-6 border border-[#cccccc]">
-        <div className="flex justify-center">
-          <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-inner border border-[#cccccc]">
-            <img
-              src={currentSign?.image}
-              alt="Current Sign"
-              className="w-20 h-20"
-            />
-          </div>
+      <div className="flex flex-col gap-8 max-w-4xl mx-auto">
+        {/* Camera Feed - Expanded */}
+        <div className="aspect-video bg-black rounded-[40px] relative overflow-hidden shadow-2xl group border-[6px] border-[#f8f8f8]">
+          {!isCameraActive ? (
+            <button onClick={() => setIsCameraActive(true)} className="absolute inset-0 m-auto w-fit h-fit bg-red-600 text-white px-12 py-5 rounded-full font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl z-20">Initialize Advanced Sensors</button>
+          ) : (
+            <CameraFeed isActive={isCameraActive}>
+              {(video) => (
+                <>
+                  <HandMarkers video={video} onHandsStateChange={setHandsState} onLandmarksChange={setCurrentLandmarks} />
+
+                  {/* Progress Ring Overlay */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                    <AnimatePresence>
+                      {autoSaveProgress > 0 && (
+                        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.1 }} className="relative w-56 h-56">
+                          <svg className="w-full h-full -rotate-90">
+                            <circle cx="112" cy="112" r="100" fill="none" stroke="white" strokeWidth="4" className="opacity-10" />
+                            <circle cx="112" cy="112" r="100" fill="none" stroke="#FF6321" strokeWidth="10" strokeDasharray={628.3} strokeDashoffset={628.3 - (628.3 * autoSaveProgress) / 100} strokeLinecap="round" className="transition-all duration-100 ease-linear shadow-[0_0_20px_rgba(255,99,33,0.4)]" />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-white font-black text-3xl tracking-tighter italic">RECORDING</span>
+                            <span className="text-white/60 text-[10px] uppercase font-bold tracking-widest">Hold Position</span>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </>
+              )}
+            </CameraFeed>
+          )}
+
+          {isHandsLost && (
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-30 flex items-center justify-center p-8 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <h3 className="text-white font-bold text-xl uppercase tracking-tighter">Hand Signal Lost</h3>
+                <p className="text-white/60 text-sm">Please bring your hand back into the camera frame to resume training.</p>
+              </div>
+            </div>
+          )}
         </div>
-        <div>
-          <h2 className="text-2xl font-bold uppercase tracking-widest">
-            {currentSign?.name}
-          </h2>
-          <div className="flex justify-center space-x-2 mt-4">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className={`w-3 h-3 rounded-full ${i <= repetition ? 'bg-[#222222]' : 'bg-[#dddddd]'
-                  }`}
-              />
+
+        {/* Instructions - Bottom Panel */}
+        <div className="grid md:grid-cols-2 gap-6 items-center bg-[#f8f8f8] p-8 rounded-[40px] border border-[#eeeeee] shadow-sm">
+          <div className="space-y-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#FF6321] mb-2">Training Target</p>
+            <h2 className="text-5xl font-black text-[#1a1a1a] tracking-tighter uppercase leading-none">{currentSign?.name}</h2>
+
+            {handTrackingError && (
+              <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-3 p-4 bg-orange-50 text-orange-600 rounded-2xl border border-orange-100">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm font-bold tracking-tight">{handTrackingError}</p>
+              </motion.div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+            {currentSign?.validationRules?.map((rule, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-bold ${rule === 'EXTENDED' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : rule === 'FOLDED' ? 'bg-slate-800 text-white' : 'bg-white text-slate-400'}`}>
+                  {rule === 'EXTENDED' ? 'UP' : rule === 'FOLDED' ? 'DOWN' : 'ANY'}
+                </div>
+                <span className={`text-[13px] font-bold ${rule !== 'ANY' ? 'text-[#1a1a1a]' : 'text-slate-400'}`}>{FINGER_NAMES[i]}</span>
+              </div>
             ))}
           </div>
         </div>
-      </div>
 
-      <div className="aspect-video bg-black rounded-2xl flex items-center justify-center text-white relative overflow-hidden group">
-        {!isCameraActive ? (
-          <div className="text-center space-y-4">
-            <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto group-hover:bg-white/20 transition-colors">
-              <Camera className="w-8 h-8 opacity-50" />
-            </div>
-            <button
-              onClick={() => setIsCameraActive(true)}
-              className="bg-white text-black px-6 py-2 rounded-full font-bold text-sm hover:bg-[#eeeeee] transition-all"
-            >
-              Start Camera
-            </button>
-          </div>
-        ) : (
-          <CameraFeed isActive={isCameraActive}>
-            {(video) => (
-              <>
-                <HandMarkers
-                  video={video}
-                  onHandsStateChange={setHandsState}
-                  onLandmarksChange={setCurrentLandmarks}
-                  onError={setHandTrackingError}
-                />
-                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                  {autoSaveProgress > 0 && (
-                    <div className="relative w-24 h-24">
-                      <svg className="w-full h-full transform -rotate-90">
-                        <circle
-                          cx="48"
-                          cy="48"
-                          r="40"
-                          stroke="white"
-                          strokeWidth="8"
-                          fill="transparent"
-                          className="opacity-20"
-                        />
-                        <circle
-                          cx="48"
-                          cy="48"
-                          r="40"
-                          stroke="#FF6321"
-                          strokeWidth="8"
-                          fill="transparent"
-                          strokeDasharray={251.2}
-                          strokeDashoffset={251.2 - (251.2 * autoSaveProgress) / 100}
-                          className="transition-all duration-100 ease-linear"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-white font-bold">Auto</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="absolute top-4 left-4 flex items-center space-x-2 z-30 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
-                  <div className={`w-2 h-2 rounded-full ${handsState.totalHands > 0 ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">
-                    {handTrackingError ?? (handsState.totalHands > 0 ? 'Target Locked' : 'Show Hand(s)')}
-                  </span>
-                </div>
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.leftDetected ? 'bg-green-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Left hand
-                  </div>
-                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.rightDetected ? 'bg-sky-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Right hand
-                  </div>
-                </div>
-              </>
-            )}
-          </CameraFeed>
-        )}
-      </div>
-
-      <div className="flex justify-center pt-4">
-        <div className={`px-10 py-4 rounded-xl font-bold flex flex-col items-center transition-all ${handTrackingError ? 'bg-red-50 text-red-500 border border-red-200' : handsState.totalHands > 0 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'
-          }`}>
-          {handTrackingError ? (
-            <span className="text-sm">⚠️ {handTrackingError}</span>
-          ) : handsState.totalHands > 0 ? (
-            <span className="text-sm">Hold steady to capture... {Math.max(0, 1 - (autoSaveProgress / 100)).toFixed(1)}s</span>
-          ) : (
-            <span className="text-sm">Waiting for hand detection</span>
-          )}
-        </div>
+        <button onClick={onBack} className="py-4 text-[#888888] font-bold hover:text-black transition-colors uppercase tracking-widest text-[10px] mx-auto opacity-50 hover:opacity-100">← Restart Sequence Selection</button>
       </div>
     </motion.div>
   );

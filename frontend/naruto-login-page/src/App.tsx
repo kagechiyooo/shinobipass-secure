@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { View, GestureSignature, User } from './types';
+import { View, GestureSignature, User, HandFrame } from './types';
 import { storage } from './utils/storage';
 
 // Views
@@ -23,10 +23,12 @@ export default function App() {
   const [repetition, setRepetition] = useState(1);
   const [verifiedCount, setVerifiedCount] = useState(0);
   const [verifyContext, setVerifyContext] = useState<'login' | 'forgot'>('login');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
     const user = storage.getCurrentUser();
     if (user) {
+      setCurrentUser(user);
       setUsername(user.username);
       setView('home');
     }
@@ -42,30 +44,25 @@ export default function App() {
 
   const [registrationTimestamps, setRegistrationTimestamps] = useState<number[]>([]);
 
-  const handleSaveRecording = (hands: { landmarks: any[]; label: string }[]) => {
+  const handleSaveRecording = (handSequence: HandFrame[], trajectory?: any[]) => {
     const currentSignId = selectedGestures[recordingIndex];
     let updatedSignatures = [...gestureSignatures];
     let existing = updatedSignatures.find(s => s.signId === currentSignId);
 
-    // Calculate proportions for the first hand in the capture
-    const handProportions = hands.length > 0 ? gestureUtils.calculateProportions(hands[0].landmarks) : [];
-
     if (existing) {
-      existing.captures.push(hands);
-      if (handProportions.length > 0) existing.proportions = handProportions;
+      existing.captures.push(handSequence);
     } else {
       updatedSignatures.push({
         signId: currentSignId,
-        captures: [hands],
-        proportions: handProportions
+        captures: [handSequence],
+        trajectories: trajectory ? [trajectory] : [],
       });
     }
     setGestureSignatures(updatedSignatures);
 
-    if (repetition < 2) {
+    if (repetition < 3) {
       setRepetition(repetition + 1);
     } else {
-      // Sign finished - record timestamp
       const now = Date.now();
       setRegistrationTimestamps(prev => [...prev, now]);
 
@@ -73,7 +70,6 @@ export default function App() {
         setRecordingIndex(recordingIndex + 1);
         setRepetition(1);
       } else {
-        // Registration complete
         const intervals = registrationTimestamps.length > 0
           ? [...registrationTimestamps, now].slice(1).map((t, i) => t - registrationTimestamps[i])
           : [];
@@ -85,6 +81,7 @@ export default function App() {
         };
         storage.saveUser(newUser);
         storage.setCurrentUser(newUser);
+        setCurrentUser(newUser);
         setView('home');
       }
     }
@@ -98,7 +95,9 @@ export default function App() {
     }
 
     setVerifyContext(context);
-    setSelectedGestures(user.signatures.map(s => s.signId));
+    // V9 PRO: Random Challenge - Shuffle the order of signs
+    const shuffled = [...user.signatures].sort(() => Math.random() - 0.5);
+    setSelectedGestures(shuffled.map(s => s.signId));
     setGestureSignatures(user.signatures);
     setVerifiedCount(0);
     setView('verifyGestures');
@@ -145,7 +144,7 @@ export default function App() {
 
       {/* Right Side: Content */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 md:p-12">
-        <div className="w-full max-w-[520px] py-10 lg:min-h-[760px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-2">
+        <div className="w-full max-w-[850px] py-10 lg:min-h-[760px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-2 mx-auto">
           <AnimatePresence mode="wait">
             {view === 'login' && (
               <LoginView
@@ -177,21 +176,22 @@ export default function App() {
 
             {view === 'recordGestures' && (
               <RecordGesturesView
+                username={username}
                 selectedGestures={selectedGestures}
                 recordingIndex={recordingIndex}
                 repetition={repetition}
-                onBack={() => setView('selectGestures')}
                 onSave={handleSaveRecording}
+                onBack={() => setView('selectGestures')}
               />
             )}
 
             {view === 'verifyGestures' && (
               <VerifyGesturesView
                 selectedGestures={selectedGestures}
-                signatures={gestureSignatures}
+                signatures={currentUser?.signatures || []}
                 verifiedCount={verifiedCount}
-                onBack={() => setView('login')}
                 onVerifyStep={handleVerifyStep}
+                onSuccess={() => setView('home')}
               />
             )}
 
