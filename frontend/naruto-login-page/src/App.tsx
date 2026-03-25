@@ -33,31 +33,42 @@ export default function App() {
 
   const handleToggleGesture = (id: string) => {
     if (selectedGestures.includes(id)) {
-      setSelectedGestures([]);
-    } else {
-      setSelectedGestures([id]);
+      setSelectedGestures(selectedGestures.filter(g => g !== id));
+    } else if (selectedGestures.length < 3) {
+      setSelectedGestures([...selectedGestures, id]);
     }
   };
 
   const handleSaveRecording = (hands: { landmarks: any[]; label: string }[]) => {
     const currentSignId = selectedGestures[recordingIndex];
-    const newSignature: GestureSignature = {
-      signId: currentSignId,
-      landmarks: hands // Store the single capture (array of hands)
-    };
+    let updatedSignatures = [...gestureSignatures];
+    let existing = updatedSignatures.find(s => s.signId === currentSignId);
 
-    // Update signatures (replacing existing if found)
-    const updatedSignatures = [newSignature];
+    if (existing) {
+      existing.captures.push(hands);
+    } else {
+      updatedSignatures.push({
+        signId: currentSignId,
+        captures: [hands]
+      });
+    }
     setGestureSignatures(updatedSignatures);
 
-    // Registration complete - Save to storage and login immediately
-    const newUser: User = {
-      username: username,
-      signatures: updatedSignatures
-    };
-    storage.saveUser(newUser);
-    storage.setCurrentUser(newUser); // Log in immediately
-    setView('home');
+    if (repetition < 2) {
+      setRepetition(repetition + 1);
+    } else if (recordingIndex < selectedGestures.length - 1) {
+      setRecordingIndex(recordingIndex + 1);
+      setRepetition(1);
+    } else {
+      // Registration complete - Save to storage
+      const newUser: User = {
+        username: username,
+        signatures: updatedSignatures
+      };
+      storage.saveUser(newUser);
+      storage.setCurrentUser(newUser); // Log in immediately
+      setView('home');
+    }
   };
 
   const startGestureVerify = (context: 'login' | 'forgot') => {
