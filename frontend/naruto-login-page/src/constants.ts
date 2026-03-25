@@ -1,12 +1,12 @@
 import { HandSign } from './types';
 
 export const HAND_SIGNS: HandSign[] = [
-  { id: 'palm', name: 'Palm (ง่าย)', image: '/hand-signs/palm.png' },
-  { id: 'fist', name: 'Fist (ง่าย)', image: '/hand-signs/fist.png' },
-  { id: 'rat', name: 'Rat', image: '/hand-signs/rat.png' },
+  { id: 'palm', name: 'Palm (ง่าย)', image: '/hand-signs/palm.png', validationRules: ['EXTENDED', 'EXTENDED', 'EXTENDED', 'EXTENDED', 'EXTENDED'] },
+  { id: 'fist', name: 'Fist (ง่าย)', image: '/hand-signs/fist.png', validationRules: ['FOLDED', 'FOLDED', 'FOLDED', 'FOLDED', 'FOLDED'] },
+  { id: 'rat', name: 'Rat', image: '/hand-signs/rat.png', validationRules: ['FOLDED', 'EXTENDED', 'FOLDED', 'FOLDED', 'FOLDED'] }, // Index up (simplified)
   { id: 'ox', name: 'Ox', image: '/hand-signs/ox.png' },
-  { id: 'tiger', name: 'Tiger', image: '/hand-signs/tiger.png' },
-  { id: 'rabbit', name: 'Rabbit', image: '/hand-signs/rabbit.png' },
+  { id: 'tiger', name: 'Tiger', image: '/hand-signs/tiger.png', validationRules: ['EXTENDED', 'EXTENDED', 'FOLDED', 'FOLDED', 'FOLDED'] }, // Index/Middle partial
+  { id: 'rabbit', name: 'Rabbit', image: '/hand-signs/rabbit.png', validationRules: ['FOLDED', 'EXTENDED', 'EXTENDED', 'FOLDED', 'FOLDED'] },
   { id: 'dragon', name: 'Dragon', image: '/hand-signs/dragon.png' },
   { id: 'snake', name: 'Snake', image: '/hand-signs/snake.png' },
   { id: 'horse', name: 'Horse', image: '/hand-signs/horse.png' },

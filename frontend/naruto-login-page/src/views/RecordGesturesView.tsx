@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, Camera, Check } from 'lucide-react';
 import { HAND_SIGNS } from '../constants';
+import { gestureUtils } from '../utils/gesture';
 import { HandMarkers } from '../components/HandMarkers';
 import { CameraFeed } from '../components/CameraFeed';
 
@@ -36,25 +37,33 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
   React.useEffect(() => {
     let interval: any;
 
-    // Condition: Must have hands AND be active
-    const canStartTimer = isCameraActive && handsState.totalHands > 0;
-
-    if (canStartTimer) {
+    if (isCameraActive && handsState.totalHands > 0) {
       interval = setInterval(() => {
+        const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
+        if (currentSign?.validationRules) {
+          const validation = gestureUtils.validateRule(currentLandmarks, currentSign.validationRules);
+          if (!validation.valid) {
+            setAutoSaveProgress(0);
+            setHandTrackingError(validation.message);
+            return;
+          }
+        }
+
+        setHandTrackingError(null);
         setAutoSaveProgress((prev) => {
           if (prev >= 100) {
             clearInterval(interval);
             onSave(landmarksRef.current);
             return 0;
           }
-          return prev + 10;
+          return prev + 10; // 1000ms to capture (10 steps of 100ms)
         });
       }, 100);
     } else {
       setAutoSaveProgress(0);
     }
     return () => clearInterval(interval);
-  }, [isCameraActive, handsState.totalHands > 0, onSave]);
+  }, [isCameraActive, handsState.totalHands, currentLandmarks, recordingIndex, selectedGestures, onSave]);
 
   return (
     <motion.div
@@ -175,12 +184,14 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
       </div>
 
       <div className="flex justify-center pt-4">
-        <div className={`px-10 py-4 rounded-xl font-bold flex items-center transition-all ${handsState.totalHands > 0 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'
+        <div className={`px-10 py-4 rounded-xl font-bold flex flex-col items-center transition-all ${handTrackingError ? 'bg-red-50 text-red-500 border border-red-200' : handsState.totalHands > 0 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'
           }`}>
-          {handsState.totalHands > 0 ? (
-            <>Hold steady to capture... {Math.max(0, 1 - (autoSaveProgress / 100)).toFixed(1)}s</>
+          {handTrackingError ? (
+            <span className="text-sm">⚠️ {handTrackingError}</span>
+          ) : handsState.totalHands > 0 ? (
+            <span className="text-sm">Hold steady to capture... {Math.max(0, 1 - (autoSaveProgress / 100)).toFixed(1)}s</span>
           ) : (
-            <>Waiting for hand detection</>
+            <span className="text-sm">Waiting for hand detection</span>
           )}
         </div>
       </div>
