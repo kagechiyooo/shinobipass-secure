@@ -19,28 +19,38 @@ export const gestureUtils = {
 
     /**
      * Extracts "Hand Pose Features" (multi-joint angles + normalized distances)
+     * V2: High fidelity multi-joint analysis
      */
     extractFeatures: (landmarks: Landmark[]) => {
         if (landmarks.length < 21) return null;
 
-        // Finger landmarks indices:
-        // Thumb: [1, 2, 3, 4]
-        // Index: [5, 6, 7, 8]
-        // Middle: [9, 10, 11, 12]
-        // Ring: [13, 14, 15, 16]
-        // Pinky: [17, 18, 19, 20]
-
-        const fingerIndices = [
-            [2, 3, 4],    // Thumb (MCP-IP-Tip)
-            [5, 6, 8],    // Index (MCP-PIP-Tip)
-            [9, 10, 12],  // Middle
-            [13, 14, 16], // Ring
-            [17, 18, 20]  // Pinky
+        /**
+         * Joint Angles (MCP-PIP-DIP-Tip)
+         * Each finger has 4 segments (3 joints)
+         */
+        const fingerRanges = [
+            [1, 2, 3, 4],    // Thumb
+            [5, 6, 7, 8],    // Index
+            [9, 10, 11, 12], // Middle
+            [13, 14, 15, 16],// Ring
+            [17, 18, 19, 20] // Pinky
         ];
 
-        const angles: number[] = fingerIndices.map(indices =>
-            gestureUtils.calculateAngle(landmarks[indices[0]], landmarks[indices[1]], landmarks[indices[2]])
-        );
+        const angles: number[] = [];
+
+        fingerRanges.forEach((range, fIdx) => {
+            // Joint 1 (MCP / CMC for thumb)
+            angles.push(gestureUtils.calculateAngle(landmarks[0], landmarks[range[0]], landmarks[range[1]]));
+            // Joint 2 (PIP / MCP for thumb)
+            angles.push(gestureUtils.calculateAngle(landmarks[range[0]], landmarks[range[1]], landmarks[range[2]]));
+            // Joint 3 (DIP / IP for thumb)
+            angles.push(gestureUtils.calculateAngle(landmarks[range[1]], landmarks[range[2]], landmarks[range[3]]));
+        });
+
+        // 2. Spread Angles (Angle between MCPs relative to wrist)
+        for (let i = 0; i < 4; i++) {
+            angles.push(gestureUtils.calculateAngle(landmarks[fingerRanges[i][0]], landmarks[0], landmarks[fingerRanges[i + 1][0]]));
+        }
 
         // Normalize scale using "Palm Unit" (Wrist to Middle MCP)
         const wrist = landmarks[0];
@@ -68,65 +78,99 @@ export const gestureUtils = {
     /**
      * Compares current hand landmarks against a set of signature hands
      * Returns a score and a helpful hint for improvement
+     * V4: Per-Finger Strict matching
      */
-    compareAgainstSignature: (currentHands: Landmark[][], signatureHands: Landmark[][]): { score: number, hint: string | null } => {
+    compareAgainstSignature: (
+        currentHands: { landmarks: Landmark[]; label: string }[],
+        signatureHands: { landmarks: Landmark[]; label: string }[]
+    ): { score: number, hint: string | null } => {
         if (currentHands.length === 0 || signatureHands.length === 0) return { score: 999, hint: null };
 
-        let totalBestScore = 0;
+        let totalScoreSum = 0;
         let worstFingerHint: string | null = null;
-        let maxDiff = 0;
-
         const fingerNames = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];
 
-        // Foreach signature hand, find the best match in the current detection
         signatureHands.forEach(sigHand => {
-            const sigFeatures = gestureUtils.extractFeatures(sigHand);
+            const sigFeatures = gestureUtils.extractFeatures(sigHand.landmarks);
             if (!sigFeatures) return;
 
-            let bestHandMatch = 999;
-            let handHint: string | null = null;
+            let bestHandMatchScore = 999;
+            let currentHandHint: string | null = null;
 
             currentHands.forEach(currHand => {
-                const currFeatures = gestureUtils.extractFeatures(currHand);
+                // 0. Handedness Check (Mandatory)
+                if (currHand.label !== sigHand.label) {
+                    return;
+                }
+
+                const currFeatures = gestureUtils.extractFeatures(currHand.landmarks);
                 if (!currFeatures) return;
 
-                // 1. Angle Similarity
-                let angleScore = 0;
-                const weights = [1.0, 1.2, 1.2, 1.0, 1.0];
+                // 1. Calculate Per-Finger Error
+                let maxFingerError = 0;
+                let fingerWithMaxError = -1;
+                let absoluteJointFail = false;
 
-                currFeatures.angles.forEach((angle, i) => {
-                    const diff = Math.abs(angle - sigFeatures.angles[i]);
-                    angleScore += (diff / 180) * weights[i];
+                // There are 5 fingers, each has 3 joint angles
+                for (let fIdx = 0; fIdx < 5; fIdx++) {
+                    let fingerAngleDiff = 0;
+                    for (let jIdx = 0; jIdx < 3; jIdx++) {
+                        const idx = fIdx * 3 + jIdx;
+                        const diff = Math.abs(currFeatures.angles[idx] - sigFeatures.angles[idx]);
 
-                    // Track which finger is most "wrong"
-                    if (diff > maxDiff && diff > 25) { // Only hint if diff is significant (>25 deg)
-                        maxDiff = diff;
-                        const action = angle < sigFeatures.angles[i] ? 'กาง' : 'พับ';
-                        handHint = `กรุณา${action}${fingerNames[i]}ให้มากขึ้น`;
+                        // User-Friendly cutoff (relaxed from 40 to 50)
+                        if (diff > 50) absoluteJointFail = true;
+
+                        // Squared penalty (relaxed from cubic)
+                        fingerAngleDiff += Math.pow(diff / 90, 2);
                     }
-                });
-                angleScore /= weights.reduce((a, b) => a + b, 0);
+                    fingerAngleDiff /= 3;
 
-                // 2. Distance Ratio Similarity
-                let distScore = 0;
-                currFeatures.tipDistances.forEach((dist, i) => {
-                    const diff = Math.abs(dist - sigFeatures.tipDistances[i]);
-                    distScore += Math.min(diff, 1.0) * weights[i];
-                });
-                distScore /= weights.reduce((a, b) => a + b, 0);
+                    // Distance error for this finger
+                    const distDiff = Math.abs(currFeatures.tipDistances[fIdx] - sigFeatures.tipDistances[fIdx]);
+                    const fingerTotalError = (fingerAngleDiff * 0.9) + (Math.pow(distDiff, 1.1) * 0.1);
 
-                const combined = (angleScore * 0.6) + (distScore * 0.4);
-                if (combined < bestHandMatch) {
-                    bestHandMatch = combined;
-                    worstFingerHint = handHint;
+                    if (fingerTotalError > maxFingerError) {
+                        maxFingerError = fingerTotalError;
+                        fingerWithMaxError = fIdx;
+                    }
+                }
+
+                // 2. Global Spread Match
+                let spreadError = 0;
+                for (let i = 15; i < 19; i++) {
+                    const diff = Math.abs(currFeatures.angles[i] - sigFeatures.angles[i]);
+                    spreadError += Math.pow(diff / 30, 2);
+                }
+                spreadError /= 4;
+
+                // 3. Final Score
+                let handCombinedScore = (maxFingerError * 0.8) + (spreadError * 0.2);
+                if (absoluteJointFail) handCombinedScore += 0.25; // Light penalty (relaxed)
+
+                if (handCombinedScore < bestHandMatchScore) {
+                    bestHandMatchScore = handCombinedScore;
+
+                    if (maxFingerError > 0.05) {
+                        const midJointIdx = fingerWithMaxError * 3 + 1;
+                        const action = currFeatures.angles[midJointIdx] < sigFeatures.angles[midJointIdx] ? 'กาง' : 'พับ';
+                        currentHandHint = `[Security] ท่าทาง${fingerNames[fingerWithMaxError]} ผิดท่า (กาง/พับ ผิดปกติ)`;
+                    }
                 }
             });
 
-            totalBestScore += bestHandMatch;
+            // If no hand matched the handedness
+            if (bestHandMatchScore >= 999) {
+                const targetSide = sigHand.label === 'Left' ? 'มือซ้าย' : 'มือขวา';
+                currentHandHint = `กรุณาใช้${targetSide}ตามที่บันทึกไว้ครับ`;
+            }
+
+            totalScoreSum += bestHandMatchScore;
+            worstFingerHint = currentHandHint;
         });
 
         return {
-            score: totalBestScore / signatureHands.length,
+            score: totalScoreSum / signatureHands.length,
             hint: worstFingerHint
         };
     }

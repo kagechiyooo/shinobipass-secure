@@ -5,7 +5,7 @@ import { HAND_CONNECTIONS, Hands, Results } from '@mediapipe/hands';
 interface HandMarkersProps {
   video: HTMLVideoElement | null;
   onHandsStateChange?: (state: { leftDetected: boolean; rightDetected: boolean; totalHands: number }) => void;
-  onLandmarksChange?: (landmarks: any[][]) => void;
+  onLandmarksChange?: (hands: { landmarks: any[]; label: string }[]) => void;
   onError?: (message: string | null) => void;
 }
 
@@ -59,7 +59,12 @@ export function HandMarkers({ video, onHandsStateChange, onLandmarksChange, onEr
         totalHands: results.multiHandLandmarks?.length ?? 0,
       });
 
-      onLandmarksChange?.(results.multiHandLandmarks ?? []);
+      const handsData = (results.multiHandLandmarks ?? []).map((landmarks, index) => ({
+        landmarks,
+        label: handedness[index]?.label ?? 'Unknown'
+      }));
+
+      onLandmarksChange?.(handsData);
 
       results.multiHandLandmarks?.forEach((landmarks, index) => {
         const isLeft = handedness[index]?.label === 'Left';
