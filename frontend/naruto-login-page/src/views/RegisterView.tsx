@@ -18,7 +18,7 @@ export function RegisterView({ username, onUsernameChange, onBack, onNext }: Reg
       exit={{ opacity: 0, x: -20 }}
       className="space-y-8"
     >
-      <button onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
+      <button type="button" onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
       </button>
       <div className="space-y-2">
@@ -41,6 +41,7 @@ export function RegisterView({ username, onUsernameChange, onBack, onNext }: Reg
         <Input label="Confirm Password" type="password" placeholder="****************" />
         <div className="flex justify-center pt-4">
           <button
+            type="button"
             onClick={onNext}
             className="bg-[#222222] text-white px-12 py-4 rounded-lg font-bold flex items-center shadow-lg hover:bg-black transition-all"
           >

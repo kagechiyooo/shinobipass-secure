@@ -14,15 +14,27 @@ import { ResetPasswordView } from './views/ResetPasswordView';
 import { SuccessView } from './views/SuccessView';
 import { HomeView } from './views/HomeView';
 
+const GESTURE_SLOT_COUNT = 4;
+const GESTURE_SLOT_IDS = Array.from({ length: GESTURE_SLOT_COUNT }, (_, index) => `gesture-${index + 1}`);
+
+const shuffleGestures = (gestureIds: string[]) => {
+  const shuffled = [...gestureIds];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+};
+
 export default function App() {
   const [view, setView] = useState<View>('login');
   const [username, setUsername] = useState('');
-  const [selectedGestures, setSelectedGestures] = useState<string[]>([]);
+  const [selectedGestures, setSelectedGestures] = useState<string[]>(GESTURE_SLOT_IDS);
   const [gestureSignatures, setGestureSignatures] = useState<GestureSignature[]>([]);
   const [recordingIndex, setRecordingIndex] = useState(0);
   const [repetition, setRepetition] = useState(1);
-  const [verifiedCount, setVerifiedCount] = useState(0);
   const [verifyContext, setVerifyContext] = useState<'login' | 'forgot'>('login');
+  const [verifySequence, setVerifySequence] = useState<string[]>([]);
 
   useEffect(() => {
     const user = storage.getCurrentUser();
@@ -32,17 +44,7 @@ export default function App() {
     }
   }, []);
 
-  const handleToggleGesture = (id: string) => {
-    if (selectedGestures.includes(id)) {
-      setSelectedGestures(selectedGestures.filter(g => g !== id));
-    } else if (selectedGestures.length < 3) {
-      setSelectedGestures([...selectedGestures, id]);
-    }
-  };
-
-  const [registrationTimestamps, setRegistrationTimestamps] = useState<number[]>([]);
-
-  const handleSaveRecording = (hands: { landmarks: any[]; label: string }[]) => {
+  const handleSaveRecording = (hands: { landmarks: any[]; label: string }[], snapshot: number[] | null) => {
     const currentSignId = selectedGestures[recordingIndex];
     let updatedSignatures = [...gestureSignatures];
     let existing = updatedSignatures.find(s => s.signId === currentSignId);
@@ -52,11 +54,15 @@ export default function App() {
 
     if (existing) {
       existing.captures.push(hands);
+      if (snapshot) {
+        existing.snapshots = [...(existing.snapshots ?? []), snapshot];
+      }
       if (handProportions.length > 0) existing.proportions = handProportions;
     } else {
       updatedSignatures.push({
         signId: currentSignId,
         captures: [hands],
+        snapshots: snapshot ? [snapshot] : [],
         proportions: handProportions
       });
     }
@@ -65,23 +71,13 @@ export default function App() {
     if (repetition < 2) {
       setRepetition(repetition + 1);
     } else {
-      // Sign finished - record timestamp
-      const now = Date.now();
-      setRegistrationTimestamps(prev => [...prev, now]);
-
       if (recordingIndex < selectedGestures.length - 1) {
         setRecordingIndex(recordingIndex + 1);
         setRepetition(1);
       } else {
-        // Registration complete
-        const intervals = registrationTimestamps.length > 0
-          ? [...registrationTimestamps, now].slice(1).map((t, i) => t - registrationTimestamps[i])
-          : [];
-
         const newUser: User = {
           username: username,
-          signatures: updatedSignatures,
-          registrationTiming: intervals
+          signatures: updatedSignatures
         };
         storage.saveUser(newUser);
         storage.setCurrentUser(newUser);
@@ -98,9 +94,15 @@ export default function App() {
     }
 
     setVerifyContext(context);
-    setSelectedGestures(user.signatures.map(s => s.signId));
-    setGestureSignatures(user.signatures);
-    setVerifiedCount(0);
+    const orderedSignatures = [...user.signatures].sort((a, b) => a.signId.localeCompare(b.signId));
+    if (orderedSignatures.length === 0) {
+      alert('No saved gestures found for this user.');
+      return;
+    }
+
+    setSelectedGestures(orderedSignatures.map((signature) => signature.signId));
+    setGestureSignatures(orderedSignatures);
+    setVerifySequence(shuffleGestures(orderedSignatures.map((signature) => signature.signId)));
     setView('verifyGestures');
   };
 
@@ -113,21 +115,16 @@ export default function App() {
     startGestureVerify('forgot');
   };
 
-  const handleVerifyStep = () => {
-    if (verifiedCount < selectedGestures.length - 1) {
-      setVerifiedCount(verifiedCount + 1);
-    } else {
-      setVerifiedCount(selectedGestures.length);
-      setTimeout(() => {
-        if (verifyContext === 'login') {
-          const user = storage.getUser(username);
-          if (user) storage.setCurrentUser(user);
-          setView('home');
-        } else {
-          setView('resetPassword');
-        }
-      }, 800);
-    }
+  const handleVerifySuccess = () => {
+    setTimeout(() => {
+      if (verifyContext === 'login') {
+        const user = storage.getUser(username);
+        if (user) storage.setCurrentUser(user);
+        setView('home');
+      } else {
+        setView('resetPassword');
+      }
+    }, 500);
   };
 
   return (
@@ -152,7 +149,13 @@ export default function App() {
                 username={username}
                 onUsernameChange={setUsername}
                 onLogin={handleLoginSubmit}
-                onRegister={() => setView('register')}
+                onRegister={() => {
+                  setSelectedGestures(GESTURE_SLOT_IDS);
+                  setGestureSignatures([]);
+                  setRecordingIndex(0);
+                  setRepetition(1);
+                  setView('register');
+                }}
                 onForgot={handleForgotPassword}
               />
             )}
@@ -162,16 +165,25 @@ export default function App() {
                 username={username}
                 onUsernameChange={setUsername}
                 onBack={() => setView('login')}
-                onNext={() => setView('selectGestures')}
+                onNext={() => {
+                  setSelectedGestures(GESTURE_SLOT_IDS);
+                  setGestureSignatures([]);
+                  setRecordingIndex(0);
+                  setRepetition(1);
+                  setView('selectGestures');
+                }}
               />
             )}
 
             {view === 'selectGestures' && (
               <SelectGesturesView
-                selectedGestures={selectedGestures}
-                onToggleGesture={handleToggleGesture}
                 onBack={() => setView('register')}
-                onNext={() => setView('recordGestures')}
+                onNext={() => {
+                  setGestureSignatures([]);
+                  setRecordingIndex(0);
+                  setRepetition(1);
+                  setView('recordGestures');
+                }}
               />
             )}
 
@@ -180,7 +192,12 @@ export default function App() {
                 selectedGestures={selectedGestures}
                 recordingIndex={recordingIndex}
                 repetition={repetition}
-                onBack={() => setView('selectGestures')}
+                onBack={() => {
+                  setGestureSignatures([]);
+                  setRecordingIndex(0);
+                  setRepetition(1);
+                  setView('selectGestures');
+                }}
                 onSave={handleSaveRecording}
               />
             )}
@@ -189,9 +206,9 @@ export default function App() {
               <VerifyGesturesView
                 selectedGestures={selectedGestures}
                 signatures={gestureSignatures}
-                verifiedCount={verifiedCount}
+                verifySequence={verifySequence}
                 onBack={() => setView('login')}
-                onVerifyStep={handleVerifyStep}
+                onVerifySuccess={handleVerifySuccess}
               />
             )}
 

@@ -1,10 +1,17 @@
-import { Landmark, FingerStatus } from '../types';
+import { FingerStatus, Landmark } from '../types';
 
+const SNAPSHOT_SIZE = 32;
+
+const average = (values: number[]) => {
+    if (values.length === 0) return 0;
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+type DetectedHand = { landmarks: Landmark[]; label: string };
 
 export const gestureUtils = {
-    /**
-     * Calculates the angle between 3 points in 3D space
-     */
     calculateAngle: (p1: Landmark, p2: Landmark, p3: Landmark): number => {
         const v1 = { x: p1.x - p2.x, y: p1.y - p2.y, z: p1.z - p2.z };
         const v2 = { x: p3.x - p2.x, y: p3.y - p2.y, z: p3.z - p2.z };
@@ -18,16 +25,11 @@ export const gestureUtils = {
         return Math.acos(Math.max(-1, Math.min(1, cosTheta))) * (180 / Math.PI);
     },
 
-    /**
-     * Extracts "Hand Pose Features" (multi-joint angles + normalized distances)
-     * V2: High fidelity multi-joint analysis
-     */
     calculateProportions: (landmarks: Landmark[]): number[] => {
         if (landmarks.length < 21) return [];
 
         const wrist = landmarks[0];
         const middleMCP = landmarks[9];
-        // Palm scale factor (wrist to middle MCP)
         const palmSize = Math.sqrt(
             Math.pow(middleMCP.x - wrist.x, 2) +
             Math.pow(middleMCP.y - wrist.y, 2) +
@@ -35,7 +37,7 @@ export const gestureUtils = {
         );
 
         const fingerTips = [4, 8, 12, 16, 20];
-        return fingerTips.map(tipIdx => {
+        return fingerTips.map((tipIdx) => {
             const tip = landmarks[tipIdx];
             const dist = Math.sqrt(
                 Math.pow(tip.x - wrist.x, 2) +
@@ -49,35 +51,27 @@ export const gestureUtils = {
     extractFeatures: (landmarks: Landmark[]) => {
         if (landmarks.length < 21) return null;
 
-        /**
-         * Joint Angles (MCP-PIP-DIP-Tip)
-         * Each finger has 4 segments (3 joints)
-         */
         const fingerRanges = [
-            [1, 2, 3, 4],    // Thumb
-            [5, 6, 7, 8],    // Index
-            [9, 10, 11, 12], // Middle
-            [13, 14, 15, 16],// Ring
-            [17, 18, 19, 20] // Pinky
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+            [17, 18, 19, 20]
         ];
 
         const angles: number[] = [];
 
-        fingerRanges.forEach((range, fIdx) => {
-            // Joint 1 (MCP / CMC for thumb)
+        fingerRanges.forEach((range) => {
             angles.push(gestureUtils.calculateAngle(landmarks[0], landmarks[range[0]], landmarks[range[1]]));
-            // Joint 2 (PIP / MCP for thumb)
             angles.push(gestureUtils.calculateAngle(landmarks[range[0]], landmarks[range[1]], landmarks[range[2]]));
-            // Joint 3 (DIP / IP for thumb)
             angles.push(gestureUtils.calculateAngle(landmarks[range[1]], landmarks[range[2]], landmarks[range[3]]));
         });
 
-        // 2. Spread Angles (Angle between MCPs relative to wrist)
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 4; i += 1) {
             angles.push(gestureUtils.calculateAngle(landmarks[fingerRanges[i][0]], landmarks[0], landmarks[fingerRanges[i + 1][0]]));
         }
 
-        // Normalize scale using "Palm Unit" (Wrist to Middle MCP)
+        const tipIndices = [4, 8, 12, 16, 20];
         const wrist = landmarks[0];
         const middleMCP = landmarks[9];
         const palmUnit = Math.sqrt(
@@ -86,8 +80,7 @@ export const gestureUtils = {
             Math.pow(wrist.z - middleMCP.z, 2)
         );
 
-        const tipIndices = [4, 8, 12, 16, 20];
-        const tipDistances: number[] = tipIndices.map(index => {
+        const tipDistances = tipIndices.map((index) => {
             const tip = landmarks[index];
             const dist = Math.sqrt(
                 Math.pow(tip.x - wrist.x, 2) +
@@ -100,152 +93,149 @@ export const gestureUtils = {
         return { angles, tipDistances };
     },
 
-    /**
-     * Compares current hand landmarks against a set of signature hands
-     * Returns a score and a helpful hint for improvement
-     * V4: Per-Finger Strict matching
-     */
-    compareAgainstSignature: (
-        currentHands: { landmarks: Landmark[]; label: string }[],
-        signatureCaptures: { landmarks: Landmark[]; label: string }[][]
-    ): { score: number, hint: string | null } => {
-        if (currentHands.length === 0 || signatureCaptures.length === 0) return { score: 999, hint: null };
+    extractHandSnapshot: (video: HTMLVideoElement | null, hands: DetectedHand[]): number[] | null => {
+        if (!video || hands.length === 0 || !video.videoWidth || !video.videoHeight) {
+            return null;
+        }
 
-        let bestOverallMatchScore = 999;
-        let bestOverallHint: string | null = null;
-        const fingerNames = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];
+        const allLandmarks = hands.flatMap((hand) => hand.landmarks);
+        if (allLandmarks.length === 0) return null;
 
-        // Check against each training capture (repetition)
-        signatureCaptures.forEach(signatureHands => {
-            let totalScoreSum = 0;
-            let worstFingerHint: string | null = null;
+        let minX = 1;
+        let minY = 1;
+        let maxX = 0;
+        let maxY = 0;
 
-            signatureHands.forEach(sigHand => {
-                const sigFeatures = gestureUtils.extractFeatures(sigHand.landmarks);
-                if (!sigFeatures) return;
-
-                let bestHandMatchScore = 999;
-                let currentHandHint: string | null = null;
-
-                currentHands.forEach(currHand => {
-                    // 0. Handedness Check (Mandatory)
-                    if (currHand.label !== sigHand.label) {
-                        return;
-                    }
-
-                    const currFeatures = gestureUtils.extractFeatures(currHand.landmarks);
-                    if (!currFeatures) return;
-
-                    // 1. Calculate Per-Finger Error
-                    let maxFingerError = 0;
-                    let fingerWithMaxError = -1;
-                    let absoluteJointFail = false;
-
-                    // There are 5 fingers, each has 3 joint angles
-                    for (let fIdx = 0; fIdx < 5; fIdx++) {
-                        let fingerAngleDiff = 0;
-                        for (let jIdx = 0; jIdx < 3; jIdx++) {
-                            const idx = fIdx * 3 + jIdx;
-                            const diff = Math.abs(currFeatures.angles[idx] - sigFeatures.angles[idx]);
-
-                            // User-Friendly cutoff (relaxed from 40 to 50)
-                            if (diff > 50) absoluteJointFail = true;
-
-                            // Squared penalty (relaxed from cubic)
-                            fingerAngleDiff += Math.pow(diff / 90, 2);
-                        }
-                        fingerAngleDiff /= 3;
-
-                        // Distance error for this finger
-                        const distDiff = Math.abs(currFeatures.tipDistances[fIdx] - sigFeatures.tipDistances[fIdx]);
-                        const fingerTotalError = (fingerAngleDiff * 0.9) + (Math.pow(distDiff, 1.1) * 0.1);
-
-                        if (fingerTotalError > maxFingerError) {
-                            maxFingerError = fingerTotalError;
-                            fingerWithMaxError = fIdx;
-                        }
-                    }
-
-                    // 2. Global Spread Match
-                    let spreadError = 0;
-                    for (let i = 15; i < 19; i++) {
-                        const diff = Math.abs(currFeatures.angles[i] - sigFeatures.angles[i]);
-                        spreadError += Math.pow(diff / 30, 2);
-                    }
-                    spreadError /= 4;
-
-                    // 3. Anatomical Proportion Check (Biometric)
-                    let proportionError = 0;
-                    if (signatureHands[0].landmarks && currHand.landmarks) {
-                        const currProportions = gestureUtils.calculateProportions(currHand.landmarks);
-                        const sigProportions = gestureUtils.calculateProportions(signatureHands[0].landmarks);
-                        if (currProportions.length === 5 && sigProportions.length === 5) {
-                            for (let i = 0; i < 5; i++) {
-                                proportionError += Math.abs(currProportions[i] - sigProportions[i]);
-                            }
-                            proportionError /= 5;
-                        }
-                    }
-
-                    // 4. Final Score
-                    let handCombinedScore = (maxFingerError * 0.7) + (spreadError * 0.15) + (proportionError * 0.15);
-                    if (absoluteJointFail) handCombinedScore += 0.25; // Light penalty (relaxed)
-
-                    if (handCombinedScore < bestHandMatchScore) {
-                        bestHandMatchScore = handCombinedScore;
-
-                        if (maxFingerError > 0.05) {
-                            const midJointIdx = fingerWithMaxError * 3 + 1;
-                            const action = currFeatures.angles[midJointIdx] < sigFeatures.angles[midJointIdx] ? 'กาง' : 'พับ';
-                            currentHandHint = `[Security] ท่าทาง${fingerNames[fingerWithMaxError]} ผิดท่า (กาง/พับ ผิดปกติ)`;
-                        }
-                    }
-                });
-
-                // If no hand matched the handedness
-                if (bestHandMatchScore >= 999) {
-                    const targetSide = sigHand.label === 'Left' ? 'มือซ้าย' : 'มือขวา';
-                    currentHandHint = `กรุณาใช้${targetSide}ตามที่บันทึกไว้ครับ`;
-                }
-
-                totalScoreSum += bestHandMatchScore;
-                worstFingerHint = currentHandHint;
-            });
-
-            const captureScore = totalScoreSum / signatureHands.length;
-            if (captureScore < bestOverallMatchScore) {
-                bestOverallMatchScore = captureScore;
-                bestOverallHint = worstFingerHint;
-            }
+        allLandmarks.forEach((landmark) => {
+            minX = Math.min(minX, landmark.x);
+            minY = Math.min(minY, landmark.y);
+            maxX = Math.max(maxX, landmark.x);
+            maxY = Math.max(maxY, landmark.y);
         });
 
+        const padding = 0.18;
+        const paddedMinX = clamp(minX - padding, 0, 1);
+        const paddedMinY = clamp(minY - padding, 0, 1);
+        const paddedMaxX = clamp(maxX + padding, 0, 1);
+        const paddedMaxY = clamp(maxY + padding, 0, 1);
+
+        const sx = paddedMinX * video.videoWidth;
+        const sy = paddedMinY * video.videoHeight;
+        const sw = Math.max(1, (paddedMaxX - paddedMinX) * video.videoWidth);
+        const sh = Math.max(1, (paddedMaxY - paddedMinY) * video.videoHeight);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = SNAPSHOT_SIZE;
+        canvas.height = SNAPSHOT_SIZE;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) return null;
+
+        context.drawImage(video, sx, sy, sw, sh, 0, 0, SNAPSHOT_SIZE, SNAPSHOT_SIZE);
+        const imageData = context.getImageData(0, 0, SNAPSHOT_SIZE, SNAPSHOT_SIZE).data;
+        const pixels: number[] = [];
+
+        for (let index = 0; index < imageData.length; index += 4) {
+            const r = imageData[index];
+            const g = imageData[index + 1];
+            const b = imageData[index + 2];
+            const grayscale = ((0.299 * r) + (0.587 * g) + (0.114 * b)) / 255;
+            pixels.push(grayscale);
+        }
+
+        const mean = average(pixels);
+        const centered = pixels.map((pixel) => pixel - mean);
+        const magnitude = Math.sqrt(centered.reduce((sum, value) => sum + (value * value), 0)) || 1;
+        return centered.map((value) => value / magnitude);
+    },
+
+    compareImageSnapshots: (currentSnapshot: number[] | null, savedSnapshots: number[][]): number => {
+        if (!currentSnapshot || savedSnapshots.length === 0) {
+            return 999;
+        }
+
+        const template = currentSnapshot.map((_, index) => average(savedSnapshots.map((snapshot) => snapshot[index] ?? 0)));
+        const diff = average(currentSnapshot.map((value, index) => Math.abs(value - (template[index] ?? value))));
+        return diff;
+    },
+
+    compareAgainstSignature: (
+        currentHands: DetectedHand[],
+        signatureCaptures: DetectedHand[][]
+    ): { score: number, hint: string | null } => {
+        if (currentHands.length === 0 || signatureCaptures.length === 0) {
+            return { score: 999, hint: null };
+        }
+
+        const captureScores = signatureCaptures
+            .map((templateHands) => {
+                let totalScore = 0;
+
+                for (const templateHand of templateHands) {
+                    let bestTemplateMatch = Number.POSITIVE_INFINITY;
+
+                    currentHands.forEach((currentHand) => {
+                        const currentFeatures = gestureUtils.extractFeatures(currentHand.landmarks);
+                        const templateFeatures = gestureUtils.extractFeatures(templateHand.landmarks);
+                        if (!currentFeatures || !templateFeatures) {
+                            return;
+                        }
+
+                        const angleError = average(
+                            currentFeatures.angles.map((angle, index) => Math.abs(angle - templateFeatures.angles[index]) / 180)
+                        );
+                        const distanceError = average(
+                            currentFeatures.tipDistances.map((distance, index) => Math.abs(distance - templateFeatures.tipDistances[index]))
+                        );
+                        const currentProportions = gestureUtils.calculateProportions(currentHand.landmarks);
+                        const templateProportions = gestureUtils.calculateProportions(templateHand.landmarks);
+                        const proportionError = average(
+                            currentProportions.map((value, index) => Math.abs(value - (templateProportions[index] ?? value)))
+                        );
+
+                        const combinedError = (angleError * 0.5) + (distanceError * 0.3) + (proportionError * 0.2);
+                        bestTemplateMatch = Math.min(bestTemplateMatch, combinedError);
+                    });
+
+                    if (!Number.isFinite(bestTemplateMatch)) {
+                        return Number.POSITIVE_INFINITY;
+                    }
+
+                    totalScore += bestTemplateMatch;
+                }
+
+                return totalScore / templateHands.length;
+            })
+            .filter((score) => Number.isFinite(score));
+
+        if (captureScores.length === 0) {
+            return { score: 999, hint: 'Show your saved gesture clearly in the camera frame.' };
+        }
+
         return {
-            score: bestOverallMatchScore,
-            hint: bestOverallHint
+            score: average(captureScores),
+            hint: null
         };
     },
 
-    validateRule: (hands: { landmarks: Landmark[]; label: string }[], rules: FingerStatus[]): { valid: boolean, message: string | null } => {
-        if (hands.length === 0) return { valid: false, message: 'กรุณาวางมือในกล้อง' };
+    validateRule: (hands: DetectedHand[], rules: FingerStatus[]): { valid: boolean, message: string | null } => {
+        if (hands.length === 0) return { valid: false, message: 'Please place your hand in the camera frame.' };
 
-        const fingerNames = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];
+        const fingerNames = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
 
         for (const hand of hands) {
             const features = gestureUtils.extractFeatures(hand.landmarks);
             if (!features) continue;
 
-            for (let i = 0; i < 5; i++) {
-                const rule = rules[i];
+            for (let index = 0; index < 5; index += 1) {
+                const rule = rules[index];
                 if (rule === 'ANY') continue;
 
-                // Simple heuristic: tipDistance > 0.6 is extended (normalized to palm size)
-                const isExtended = features.tipDistances[i] > 0.65;
-
+                const isExtended = features.tipDistances[index] > 0.65;
                 if (rule === 'EXTENDED' && !isExtended) {
-                    return { valid: false, message: `กรุณา "กาง" ${fingerNames[i]} ออกครับ` };
+                    return { valid: false, message: `Please extend your ${fingerNames[index]} finger.` };
                 }
                 if (rule === 'FOLDED' && isExtended) {
-                    return { valid: false, message: `กรุณา "พับ" ${fingerNames[i]} ลงครับ` };
+                    return { valid: false, message: `Please fold your ${fingerNames[index]} finger.` };
                 }
             }
         }

@@ -1,16 +1,13 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
-import { HAND_SIGNS } from '../constants';
 
 interface SelectGesturesViewProps {
-  selectedGestures: string[];
-  onToggleGesture: (id: string) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, onNext }: SelectGesturesViewProps) {
+export function SelectGesturesView({ onBack, onNext }: SelectGesturesViewProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -22,37 +19,27 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Account Details
       </button>
       <div className="space-y-2">
-        <h1 className="text-[28px] font-bold text-[#444444]">Select 3 Hand Signs</h1>
-        <p className="text-[#999999]">Choose exactly 3 gestures for your security passcode ({selectedGestures.length}/3)</p>
+        <h1 className="text-[28px] font-bold text-[#444444]">Set 4 Custom Gestures</h1>
+        <p className="text-[#999999]">You will record your own hand poses for slots 1 to 4, then use the slot numbers to log in later.</p>
       </div>
-      <div className="grid grid-cols-3 gap-4 justify-items-center">
-        {HAND_SIGNS.map((sign) => (
-          <button
-            key={sign.id}
-            onClick={() => onToggleGesture(sign.id)}
-            className={`relative w-fit max-w-full min-w-[8.5rem] px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 overflow-hidden ${selectedGestures.includes(sign.id)
-              ? 'border-[#222222] bg-green-100'
-              : 'border-[#cccccc] bg-white hover:border-[#999999]'
-              }`}
+      <div className="grid grid-cols-2 gap-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div
+            key={index}
+            className="rounded-3xl border border-[#d9d9d9] bg-[#fafafa] px-6 py-8 text-center shadow-sm"
           >
-            <div className={`absolute inset-0 bg-green-500 opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-10' : ''}`} />
-            <div className="relative z-10 inline-flex items-center justify-center overflow-hidden rounded-lg bg-[#f0f0f0] px-2 py-2">
-              <img src={sign.image} alt={sign.name} className="block w-auto h-auto max-w-[8.5rem] max-h-[6.75rem] object-contain" />
+            <p className="text-[12px] font-semibold uppercase tracking-[0.35em] text-[#999999]">Gesture</p>
+            <div className="mt-4 flex h-24 items-center justify-center rounded-2xl border border-dashed border-[#cfcfcf] bg-white">
+              <span className="text-5xl font-black text-[#222222]">{index + 1}</span>
             </div>
-            <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${selectedGestures.includes(sign.id) ? 'text-[#222222]' : 'text-[#666666]'}`}>
-              {sign.name}
-            </span>
-          </button>
+            <p className="mt-4 text-sm text-[#777777]">Record your own pose for slot {index + 1}</p>
+          </div>
         ))}
       </div>
       <div className="flex justify-center pt-6">
         <button
-          disabled={selectedGestures.length !== 3}
           onClick={onNext}
-          className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${selectedGestures.length === 3
-            ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
-            : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
-            }`}
+          className="px-12 py-4 rounded-lg font-bold flex items-center transition-all bg-[#222222] text-white shadow-lg hover:bg-black"
         >
           Next <ChevronRight className="w-5 h-5 ml-2" />
         </button>
