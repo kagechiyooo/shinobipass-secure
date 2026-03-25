@@ -6,6 +6,7 @@ import { storage } from './utils/storage';
 // Views
 import { LoginView } from './views/LoginView';
 import { RegisterView } from './views/RegisterView';
+import { gestureUtils } from './utils/gesture';
 import { SelectGesturesView } from './views/SelectGesturesView';
 import { RecordGesturesView } from './views/RecordGesturesView';
 import { VerifyGesturesView } from './views/VerifyGesturesView';
@@ -39,35 +40,53 @@ export default function App() {
     }
   };
 
+  const [registrationTimestamps, setRegistrationTimestamps] = useState<number[]>([]);
+
   const handleSaveRecording = (hands: { landmarks: any[]; label: string }[]) => {
     const currentSignId = selectedGestures[recordingIndex];
     let updatedSignatures = [...gestureSignatures];
     let existing = updatedSignatures.find(s => s.signId === currentSignId);
 
+    // Calculate proportions for the first hand in the capture
+    const handProportions = hands.length > 0 ? gestureUtils.calculateProportions(hands[0].landmarks) : [];
+
     if (existing) {
       existing.captures.push(hands);
+      if (handProportions.length > 0) existing.proportions = handProportions;
     } else {
       updatedSignatures.push({
         signId: currentSignId,
-        captures: [hands]
+        captures: [hands],
+        proportions: handProportions
       });
     }
     setGestureSignatures(updatedSignatures);
 
     if (repetition < 2) {
       setRepetition(repetition + 1);
-    } else if (recordingIndex < selectedGestures.length - 1) {
-      setRecordingIndex(recordingIndex + 1);
-      setRepetition(1);
     } else {
-      // Registration complete - Save to storage
-      const newUser: User = {
-        username: username,
-        signatures: updatedSignatures
-      };
-      storage.saveUser(newUser);
-      storage.setCurrentUser(newUser); // Log in immediately
-      setView('home');
+      // Sign finished - record timestamp
+      const now = Date.now();
+      setRegistrationTimestamps(prev => [...prev, now]);
+
+      if (recordingIndex < selectedGestures.length - 1) {
+        setRecordingIndex(recordingIndex + 1);
+        setRepetition(1);
+      } else {
+        // Registration complete
+        const intervals = registrationTimestamps.length > 0
+          ? [...registrationTimestamps, now].slice(1).map((t, i) => t - registrationTimestamps[i])
+          : [];
+
+        const newUser: User = {
+          username: username,
+          signatures: updatedSignatures,
+          registrationTiming: intervals
+        };
+        storage.saveUser(newUser);
+        storage.setCurrentUser(newUser);
+        setView('home');
+      }
     }
   };
 

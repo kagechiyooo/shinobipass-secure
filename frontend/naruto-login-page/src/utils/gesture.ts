@@ -1,4 +1,5 @@
-import { Landmark } from '../types';
+import { Landmark, FingerStatus } from '../types';
+
 
 export const gestureUtils = {
     /**
@@ -21,6 +22,30 @@ export const gestureUtils = {
      * Extracts "Hand Pose Features" (multi-joint angles + normalized distances)
      * V2: High fidelity multi-joint analysis
      */
+    calculateProportions: (landmarks: Landmark[]): number[] => {
+        if (landmarks.length < 21) return [];
+
+        const wrist = landmarks[0];
+        const middleMCP = landmarks[9];
+        // Palm scale factor (wrist to middle MCP)
+        const palmSize = Math.sqrt(
+            Math.pow(middleMCP.x - wrist.x, 2) +
+            Math.pow(middleMCP.y - wrist.y, 2) +
+            Math.pow(middleMCP.z - wrist.z, 2)
+        );
+
+        const fingerTips = [4, 8, 12, 16, 20];
+        return fingerTips.map(tipIdx => {
+            const tip = landmarks[tipIdx];
+            const dist = Math.sqrt(
+                Math.pow(tip.x - wrist.x, 2) +
+                Math.pow(tip.y - wrist.y, 2) +
+                Math.pow(tip.z - wrist.z, 2)
+            );
+            return dist / (palmSize || 1);
+        });
+    },
+
     extractFeatures: (landmarks: Landmark[]) => {
         if (landmarks.length < 21) return null;
 
@@ -149,8 +174,21 @@ export const gestureUtils = {
                     }
                     spreadError /= 4;
 
-                    // 3. Final Score
-                    let handCombinedScore = (maxFingerError * 0.8) + (spreadError * 0.2);
+                    // 3. Anatomical Proportion Check (Biometric)
+                    let proportionError = 0;
+                    if (signatureHands[0].landmarks && currHand.landmarks) {
+                        const currProportions = gestureUtils.calculateProportions(currHand.landmarks);
+                        const sigProportions = gestureUtils.calculateProportions(signatureHands[0].landmarks);
+                        if (currProportions.length === 5 && sigProportions.length === 5) {
+                            for (let i = 0; i < 5; i++) {
+                                proportionError += Math.abs(currProportions[i] - sigProportions[i]);
+                            }
+                            proportionError /= 5;
+                        }
+                    }
+
+                    // 4. Final Score
+                    let handCombinedScore = (maxFingerError * 0.7) + (spreadError * 0.15) + (proportionError * 0.15);
                     if (absoluteJointFail) handCombinedScore += 0.25; // Light penalty (relaxed)
 
                     if (handCombinedScore < bestHandMatchScore) {
@@ -185,5 +223,33 @@ export const gestureUtils = {
             score: bestOverallMatchScore,
             hint: bestOverallHint
         };
+    },
+
+    validateRule: (hands: { landmarks: Landmark[]; label: string }[], rules: FingerStatus[]): { valid: boolean, message: string | null } => {
+        if (hands.length === 0) return { valid: false, message: 'กรุณาวางมือในกล้อง' };
+
+        const fingerNames = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];
+
+        for (const hand of hands) {
+            const features = gestureUtils.extractFeatures(hand.landmarks);
+            if (!features) continue;
+
+            for (let i = 0; i < 5; i++) {
+                const rule = rules[i];
+                if (rule === 'ANY') continue;
+
+                // Simple heuristic: tipDistance > 0.6 is extended (normalized to palm size)
+                const isExtended = features.tipDistances[i] > 0.65;
+
+                if (rule === 'EXTENDED' && !isExtended) {
+                    return { valid: false, message: `กรุณา "กาง" ${fingerNames[i]} ออกครับ` };
+                }
+                if (rule === 'FOLDED' && isExtended) {
+                    return { valid: false, message: `กรุณา "พับ" ${fingerNames[i]} ลงครับ` };
+                }
+            }
+        }
+
+        return { valid: true, message: null };
     }
 };
