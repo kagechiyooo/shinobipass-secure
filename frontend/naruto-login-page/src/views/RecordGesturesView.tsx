@@ -10,17 +10,17 @@ interface RecordGesturesViewProps {
   recordingIndex: number;
   repetition: number;
   onBack: () => void;
-  onSave: (landmarks: any[][]) => void;
+  onSave: (hands: { landmarks: any[]; label: string }[]) => void;
 }
 
 export function RecordGesturesView({ selectedGestures, recordingIndex, repetition, onBack, onSave }: RecordGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
-  const [currentLandmarks, setCurrentLandmarks] = useState<any[][]>([]);
+  const [currentLandmarks, setCurrentLandmarks] = useState<{ landmarks: any[]; label: string }[]>([]);
   const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
   const [autoSaveProgress, setAutoSaveProgress] = useState(0); // 0 to 100
   const [lastSeenHands, setLastSeenHands] = useState<number>(Date.now());
-  const landmarksRef = React.useRef<any[][]>([]);
+  const landmarksRef = React.useRef<{ landmarks: any[]; label: string }[]>([]);
   const currentSign = HAND_SIGNS.find(s => s.id === selectedGestures[recordingIndex]);
 
   React.useEffect(() => {
@@ -87,14 +87,10 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
           <h2 className="text-2xl font-bold uppercase tracking-widest">
             {currentSign?.name}
           </h2>
-          <div className="flex justify-center space-x-2 mt-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className={`w-3 h-3 rounded-full ${i <= repetition ? 'bg-[#222222]' : 'bg-[#dddddd]'
-                  }`}
-              />
-            ))}
+          <div className="flex justify-center mt-4">
+            <div className="px-4 py-1 rounded-full bg-[#222222] text-white text-[10px] uppercase tracking-widest font-bold">
+              Hold sign still
+            </div>
           </div>
         </div>
       </div>

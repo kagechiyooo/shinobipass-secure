@@ -39,33 +39,25 @@ export default function App() {
     }
   };
 
-  const handleSaveRecording = (landmarks: any[][]) => {
+  const handleSaveRecording = (hands: { landmarks: any[]; label: string }[]) => {
     const currentSignId = selectedGestures[recordingIndex];
-    let updatedSignatures = [...gestureSignatures];
-    let existing = updatedSignatures.find(s => s.signId === currentSignId);
+    const newSignature: GestureSignature = {
+      signId: currentSignId,
+      landmarks: hands // Store the single capture (array of hands)
+    };
 
-    if (existing) {
-      existing.landmarks.push(landmarks);
-    } else {
-      updatedSignatures.push({ signId: currentSignId, landmarks: [landmarks] });
-    }
+    // Update signatures (replacing existing if found)
+    const updatedSignatures = [newSignature];
     setGestureSignatures(updatedSignatures);
 
-    if (repetition < 3) {
-      setRepetition(repetition + 1);
-    } else if (recordingIndex < selectedGestures.length - 1) {
-      setRecordingIndex(recordingIndex + 1);
-      setRepetition(1);
-    } else {
-      // Registration complete - Save to storage and login immediately
-      const newUser: User = {
-        username: username,
-        signatures: updatedSignatures
-      };
-      storage.saveUser(newUser);
-      storage.setCurrentUser(newUser); // Log in immediately
-      setView('home');
-    }
+    // Registration complete - Save to storage and login immediately
+    const newUser: User = {
+      username: username,
+      signatures: updatedSignatures
+    };
+    storage.saveUser(newUser);
+    storage.setCurrentUser(newUser); // Log in immediately
+    setView('home');
   };
 
   const startGestureVerify = (context: 'login' | 'forgot') => {

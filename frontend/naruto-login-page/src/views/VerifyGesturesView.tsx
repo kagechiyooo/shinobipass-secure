@@ -18,11 +18,17 @@ interface VerifyGesturesViewProps {
 export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount, onBack, onVerifyStep }: VerifyGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
-  const [currentLandmarks, setCurrentLandmarks] = useState<any[][]>([]);
-  const [landmarksBuffer, setLandmarksBuffer] = useState<any[][][]>([]); // Buffer for frame averaging
+  const [currentLandmarks, setCurrentLandmarks] = useState<{ landmarks: any[]; label: string }[]>([]);
+  const [landmarksBuffer, setLandmarksBuffer] = useState<{ landmarks: any[]; label: string }[][]>([]); // Buffer for frame averaging
   const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
   const [similarity, setSimilarity] = useState<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [verifyProgress, setVerifyProgress] = useState(0); // 0 to 100
+  const landmarksRef = React.useRef<{ landmarks: any[]; label: string }[]>([]);
+
+  React.useEffect(() => {
+    landmarksRef.current = currentLandmarks;
+  }, [currentLandmarks]);
 
   // Frame averaging logic
   React.useEffect(() => {
@@ -35,45 +41,49 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
   }, [currentLandmarks]);
 
   const getAveragedLandmarks = () => {
-    if (landmarksBuffer.length === 0) return currentLandmarks;
-
+    if (landmarksBuffer.length === 0) return landmarksRef.current;
     // For simplicity, we'll just use the most recent frame for now, 
     // but the logic is ready to average points if needed.
     // In many cases, just having the buffer helps check stability.
     return landmarksBuffer[landmarksBuffer.length - 1];
   };
 
-  const handlePerformSign = () => {
-    if (verifiedCount >= selectedGestures.length) return;
+  // Continuous Auto-Verification Loop
+  React.useEffect(() => {
+    let interval: any;
+    if (isCameraActive && handsState.totalHands > 0 && verifiedCount < selectedGestures.length) {
+      interval = setInterval(() => {
+        const currentSignId = selectedGestures[verifiedCount];
+        const signature = signatures.find(s => s.signId === currentSignId);
 
-    const currentSignId = selectedGestures[verifiedCount];
-    const signature = signatures.find(s => s.signId === currentSignId);
+        if (signature) {
+          const averaged = getAveragedLandmarks();
+          const result = gestureUtils.compareAgainstSignature(averaged, signature.landmarks);
+          setSimilarity(result.score);
+          setHint(result.hint);
 
-    if (!signature) {
-      alert('Signature not found for this sign!');
-      return;
-    }
-
-    const averaged = getAveragedLandmarks();
-    const result = gestureUtils.compareAgainstSignature(averaged, signature.landmarks);
-    setSimilarity(result.score);
-    setHint(result.hint);
-
-    // Pro-level threshold: 0.18 is a very tight match, 0.22 is more relaxed.
-    if (result.score < 0.22) {
-      onVerifyStep();
+          // Threshold check (0.22 is User-Friendly "Smooth & Fast")
+          if (result.score < 0.22) {
+            setVerifyProgress((prev) => {
+              if (prev >= 100) {
+                clearInterval(interval);
+                onVerifyStep();
+                return 0;
+              }
+              return prev + 25; // 800ms stability
+            });
+          } else {
+            setVerifyProgress(0); // Reset if not matching
+          }
+        }
+      }, 200);
+    } else {
+      setVerifyProgress(0);
       setSimilarity(null);
       setHint(null);
-    } else {
-      // Intuitively convert score to 0-100% (0.5+ is poor match)
-      const matchPercent = Math.max(0, 100 - (result.score * 250));
-      const feedback = result.hint
-        ? `${result.hint} (${matchPercent.toFixed(0)}% Match)`
-        : `Sign doesn't match closely enough (${matchPercent.toFixed(0)}% Match)`;
-
-      alert(feedback);
     }
-  };
+    return () => clearInterval(interval);
+  }, [isCameraActive, handsState.totalHands, verifiedCount, selectedGestures, signatures, onVerifyStep]);
 
   return (
     <motion.div
@@ -93,7 +103,7 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
       </div>
 
       {/* Top 4 Gestures Display */}
-      <div className="grid grid-cols-4 gap-3 px-2">
+      <div className="flex justify-center">
         {selectedGestures.map((id, index) => {
           const sign = HAND_SIGNS.find(s => s.id === id);
           const isVerified = index < verifiedCount;
@@ -145,7 +155,28 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
                   onLandmarksChange={setCurrentLandmarks}
                   onError={setHandTrackingError}
                 />
-                <div className="absolute inset-0 flex items-center justify-center z-20">
+
+                {/* Auto-Progress Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                  {verifyProgress > 0 && (
+                    <div className="relative w-24 h-24">
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle cx="48" cy="48" r="40" stroke="white" strokeWidth="8" fill="transparent" className="opacity-20" />
+                        <circle
+                          cx="48" cy="48" r="40" stroke="#FF6321" strokeWidth="8" fill="transparent"
+                          strokeDasharray={251.2}
+                          strokeDashoffset={251.2 - (251.2 * verifyProgress) / 100}
+                          className="transition-all duration-100 ease-linear"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-white text-xs font-bold uppercase tracking-tighter">Matching</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="absolute inset-0 flex items-center justify-center z-10">
                   {verifiedCount < selectedGestures.length && (
                     <div className="text-center space-y-2">
                       <p className="text-xs font-bold uppercase tracking-widest opacity-60">
@@ -156,8 +187,8 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
                       </p>
                       {similarity !== null && (
                         <div className="space-y-1">
-                          <p className={`text-xs font-bold ${similarity < 0.22 ? 'text-green-400' : 'text-red-400'}`}>
-                            Last attempt: {Math.max(0, 100 - (similarity * 250)).toFixed(0)}% Match
+                          <p className={`text-xs font-bold ${similarity < 0.08 ? 'text-green-400' : 'text-red-400'}`}>
+                            {Math.max(0, 100 - (similarity * 1000)).toFixed(0)}% Match
                           </p>
                           {hint && similarity >= 0.22 && (
                             <p className="text-[10px] text-yellow-400 bg-black/40 px-2 py-0.5 rounded-full inline-block">
@@ -183,22 +214,25 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
         )}
       </div>
 
-      {verifiedCount < selectedGestures.length ? (
-        <button
-          onClick={handlePerformSign}
-          disabled={!isCameraActive || handsState.totalHands === 0}
-          className={`px-16 py-4 rounded-lg font-bold flex items-center shadow-lg transition-all ${isCameraActive && handsState.totalHands > 0
-            ? 'bg-[#222222] text-white hover:bg-black'
-            : 'bg-[#dddddd] text-[#999999] cursor-not-allowed'
-            }`}
-        >
-          Perform Sign
-        </button>
-      ) : (
-        <div className="flex items-center text-green-600 font-bold text-xl animate-bounce">
-          <CheckCircle2 className="w-6 h-6 mr-2" /> Identity Verified!
-        </div>
-      )}
+      <div className="flex justify-center pt-4">
+        {verifiedCount < selectedGestures.length ? (
+          <div className={`px-10 py-4 rounded-xl font-bold flex flex-col items-center transition-all ${similarity !== null && similarity < 0.22 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'}`}>
+            {handsState.totalHands === 0 ? (
+              <span>Waiting for hand...</span>
+            ) : similarity !== null && similarity < 0.08 ? (
+              <>
+                <span className="text-sm">Matching! Hold for {(1 - (verifyProgress / 100)).toFixed(1)}s</span>
+              </>
+            ) : (
+              <span className="text-sm">Keep performing the sign correctly</span>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center text-green-600 font-bold text-xl animate-bounce">
+            <CheckCircle2 className="w-6 h-6 mr-2" /> Identity Verified!
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
