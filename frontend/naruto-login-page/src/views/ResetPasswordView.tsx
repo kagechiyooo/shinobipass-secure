@@ -16,7 +16,7 @@ export function ResetPasswordView({ onBack, onSubmit }: ResetPasswordViewProps) 
       exit={{ opacity: 0, x: -20 }}
       className="space-y-8"
     >
-      <button onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
+      <button type="button" onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Verification
       </button>
       <div className="space-y-2 text-center">

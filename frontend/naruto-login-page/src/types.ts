@@ -26,6 +26,7 @@ export interface Landmark {
 export interface GestureSignature {
   signId: string;
   captures: { landmarks: Landmark[]; label: string }[][]; // Array of multi-hand captures
+  snapshots?: number[][]; // Normalized grayscale hand images captured per repetition
   proportions?: number[]; // Anatomical ratios (biometric)
 }
 

@@ -1,105 +1,259 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Camera, CheckCircle2 } from 'lucide-react';
-import { HAND_SIGNS } from '../constants';
+import { ArrowLeft, Camera, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { HandMarkers } from '../components/HandMarkers';
 import { CameraFeed } from '../components/CameraFeed';
 import { GestureSignature } from '../types';
 import { gestureUtils } from '../utils/gesture';
-import { storage } from '../utils/storage';
 
 interface VerifyGesturesViewProps {
   selectedGestures: string[];
   signatures: GestureSignature[];
-  verifiedCount: number;
+  verifySequence: string[];
   onBack: () => void;
-  onVerifyStep: () => void;
+  onVerifySuccess: () => void;
 }
 
-export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount, onBack, onVerifyStep }: VerifyGesturesViewProps) {
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_SECONDS = 5;
+const MATCH_THRESHOLD = 0.48;
+const FAIL_THRESHOLD = 0.78;
+const BEST_MARGIN = 0.03;
+const TARGET_MARGIN = 0.04;
+const PROGRESS_STEP = 40;
+const FAIL_STEP = 12;
+
+const getBufferedHands = (
+  buffer: { landmarks: any[]; label: string }[][],
+  fallback: { landmarks: any[]; label: string }[]
+) => {
+  if (buffer.length === 0) return fallback;
+  return buffer[buffer.length - 1];
+};
+
+export function VerifyGesturesView({
+  selectedGestures,
+  signatures,
+  verifySequence,
+  onBack,
+  onVerifySuccess,
+}: VerifyGesturesViewProps) {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [handsState, setHandsState] = useState({ leftDetected: false, rightDetected: false, totalHands: 0 });
   const [currentLandmarks, setCurrentLandmarks] = useState<{ landmarks: any[]; label: string }[]>([]);
-  const [landmarksBuffer, setLandmarksBuffer] = useState<{ landmarks: any[]; label: string }[][]>([]); // Buffer for frame averaging
+  const [landmarksBuffer, setLandmarksBuffer] = useState<{ landmarks: any[]; label: string }[][]>([]);
   const [handTrackingError, setHandTrackingError] = useState<string | null>(null);
-  const [similarity, setSimilarity] = useState<number | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
-  const [verifyProgress, setVerifyProgress] = useState(0); // 0 to 100
-  const [verifyTimestamps, setVerifyTimestamps] = useState<number[]>([]);
-  const landmarksRef = React.useRef<{ landmarks: any[]; label: string }[]>([]);
+  const [attemptsUsed, setAttemptsUsed] = useState(0);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [verifiedCount, setVerifiedCount] = useState(0);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [failProgress, setFailProgress] = useState(0);
+  const [isAdvancingStep, setIsAdvancingStep] = useState(false);
+  const [lastScore, setLastScore] = useState<number | null>(null);
 
-  React.useEffect(() => {
-    landmarksRef.current = currentLandmarks;
-  }, [currentLandmarks]);
+  const timeoutRef = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const currentLandmarksRef = useRef<{ landmarks: any[]; label: string }[]>([]);
+  const landmarksBufferRef = useRef<{ landmarks: any[]; label: string }[][]>([]);
+  const handsCountRef = useRef(0);
 
-  // Frame averaging logic
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentLandmarks.length > 0) {
       setLandmarksBuffer((prev) => {
-        const newBuffer = [...prev, currentLandmarks].slice(-5); // Keep last 5 frames
-        return newBuffer;
+        const next = [...prev, currentLandmarks].slice(-5);
+        landmarksBufferRef.current = next;
+        return next;
       });
     }
   }, [currentLandmarks]);
 
-  const getAveragedLandmarks = () => {
-    if (landmarksBuffer.length === 0) return landmarksRef.current;
-    // For simplicity, we'll just use the most recent frame for now, 
-    // but the logic is ready to average points if needed.
-    // In many cases, just having the buffer helps check stability.
-    return landmarksBuffer[landmarksBuffer.length - 1];
-  };
+  useEffect(() => {
+    currentLandmarksRef.current = currentLandmarks;
+  }, [currentLandmarks]);
 
-  // Continuous Auto-Verification Loop
-  React.useEffect(() => {
-    let interval: any;
-    if (isCameraActive && handsState.totalHands > 0 && verifiedCount < selectedGestures.length) {
-      interval = setInterval(() => {
-        const currentSignId = selectedGestures[verifiedCount];
-        const signature = signatures.find(s => s.signId === currentSignId);
+  useEffect(() => {
+    handsCountRef.current = handsState.totalHands;
+  }, [handsState.totalHands]);
 
-        if (signature) {
-          const averaged = getAveragedLandmarks();
-          const result = gestureUtils.compareAgainstSignature(averaged, signature.captures);
-          setSimilarity(result.score);
-          setHint(result.hint);
+  useEffect(() => {
+    setHoldProgress(0);
+    setFailProgress(0);
+    setLandmarksBuffer([]);
+    landmarksBufferRef.current = [];
+  }, [verifiedCount]);
 
-          // Threshold check (0.22 is User-Friendly "Smooth & Fast")
-          if (result.score < 0.22) {
-            setVerifyProgress((prev) => {
-              if (prev >= 100) {
-                clearInterval(interval);
-                setVerifyTimestamps(ts => [...ts, Date.now()]);
-                onVerifyStep();
-                return 0;
-              }
-              return prev + 25; // 800ms stability
-            });
-          } else {
-            setVerifyProgress(0); // Reset if not matching
-          }
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setCooldownRemaining((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          setAttemptsUsed(0);
+          setVerifiedCount(0);
+          setHoldProgress(0);
+          setFailProgress(0);
+          setStatusMessage('Lock cleared. Start again from step 1.');
+          return 0;
         }
-      }, 200);
-    } else {
-      setVerifyProgress(0);
-      setSimilarity(null);
-      setHint(null);
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [cooldownRemaining]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const activeTargetId = verifySequence[verifiedCount] ?? null;
+  const activeTargetIndex = activeTargetId ? selectedGestures.findIndex((id) => id === activeTargetId) : -1;
+  const activeTargetSlot = activeTargetIndex >= 0 ? activeTargetIndex + 1 : null;
+
+  const getSignatureScore = (
+    signature: GestureSignature,
+    bufferedHands: { landmarks: any[]; label: string }[],
+    currentSnapshot: number[] | null
+  ) => {
+    const imageScore = gestureUtils.compareImageSnapshots(currentSnapshot, signature.snapshots ?? []);
+    const landmarkScore = gestureUtils.compareAgainstSignature(bufferedHands, signature.captures).score;
+    const hasSnapshots = (signature.snapshots?.length ?? 0) > 0;
+
+    if (!hasSnapshots) {
+      return landmarkScore;
     }
-    return () => clearInterval(interval);
-  }, [isCameraActive, handsState.totalHands, verifiedCount, selectedGestures, signatures, onVerifyStep]);
 
-  const getSpeedMatch = () => {
-    const user = storage.getUser(signatures[0]?.signId ? signatures[0].signId : ''); // Logic to get user better
-    // For simplicity, we just check total duration vs registered total
-    if (!verifyTimestamps.length || verifyTimestamps.length < 2) return 100;
-
-    // Total duration of current verification
-    const vDuration = verifyTimestamps[verifyTimestamps.length - 1] - verifyTimestamps[0];
-
-    // Total duration of registration (we'd need to store the user better or handle it in props)
-    // For now, let's assume a "Golden Speed" or just calculate if available
-    return 100; // Placeholder for now - I will implement the real comparison if User data is passed fully
+    const safeImageScore = Number.isFinite(imageScore) ? Math.min(imageScore, 1) : 1;
+    return (landmarkScore * 0.8) + (safeImageScore * 0.2);
   };
+
+  const failAttempt = (message: string) => {
+    setHoldProgress(0);
+    setFailProgress(0);
+    setVerifiedCount(0);
+    setIsAdvancingStep(false);
+
+    const nextAttemptsUsed = attemptsUsed + 1;
+    if (nextAttemptsUsed >= MAX_ATTEMPTS) {
+      setAttemptsUsed(0);
+      setCooldownRemaining(LOCKOUT_SECONDS);
+      setStatusMessage(`Wrong gesture. Locked for ${LOCKOUT_SECONDS}s.`);
+      return;
+    }
+
+    setAttemptsUsed(nextAttemptsUsed);
+    setStatusMessage(`${message} Start again from step 1. ${MAX_ATTEMPTS - nextAttemptsUsed} attempt(s) left.`);
+  };
+
+  useEffect(() => {
+    if (!isCameraActive || cooldownRemaining > 0 || !activeTargetId || signatures.length === 0 || isAdvancingStep) {
+      setHoldProgress(0);
+      setFailProgress(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (handsCountRef.current === 0) {
+        setHoldProgress(0);
+        setFailProgress(0);
+        setLastScore(null);
+        return;
+      }
+
+      const bufferedHands = getBufferedHands(landmarksBufferRef.current, currentLandmarksRef.current);
+      const currentSnapshot = gestureUtils.extractHandSnapshot(videoRef.current, bufferedHands);
+      const rankedMatches = signatures
+        .map((signature) => ({
+          signId: signature.signId,
+          score: getSignatureScore(signature, bufferedHands, currentSnapshot),
+        }))
+        .sort((left, right) => left.score - right.score);
+
+      const bestMatch = rankedMatches[0];
+      const secondBestMatch = rankedMatches[1];
+      const targetMatch = rankedMatches.find((match) => match.signId === activeTargetId);
+      const isTargetBestMatch = bestMatch?.signId === activeTargetId;
+      const hasSafeMargin = secondBestMatch ? (secondBestMatch.score - bestMatch.score) >= BEST_MARGIN : true;
+      const finalScore = bestMatch?.score ?? 999;
+      const targetScore = targetMatch?.score ?? 999;
+      const targetIsCloseEnough = targetScore <= MATCH_THRESHOLD;
+      const targetAlmostBest = bestMatch ? (targetScore - bestMatch.score) <= TARGET_MARGIN : false;
+      const isConfidentTargetMatch = targetIsCloseEnough && (isTargetBestMatch || targetAlmostBest);
+      const isConfidentWrongMatch = !isConfidentTargetMatch && !isTargetBestMatch && finalScore <= FAIL_THRESHOLD && hasSafeMargin;
+
+      setLastScore(targetScore);
+
+      if (isConfidentTargetMatch) {
+        setFailProgress(0);
+        setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} detected. Hold steady.`);
+        setHoldProgress((prev) => {
+          const next = Math.min(100, prev + PROGRESS_STEP);
+          if (next >= 100) {
+            const nextVerifiedCount = verifiedCount + 1;
+            setIsAdvancingStep(true);
+            setHoldProgress(0);
+
+            if (nextVerifiedCount >= verifySequence.length) {
+              setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} matched. Login successful.`);
+              timeoutRef.current = window.setTimeout(() => onVerifySuccess(), 500);
+            } else {
+              const nextTargetId = verifySequence[nextVerifiedCount];
+              const nextTargetIndex = selectedGestures.findIndex((id) => id === nextTargetId);
+              setStatusMessage(`Gesture ${activeTargetSlot ?? '?'} matched. Next: gesture ${nextTargetIndex + 1}.`);
+              timeoutRef.current = window.setTimeout(() => {
+                setVerifiedCount(nextVerifiedCount);
+                setIsAdvancingStep(false);
+              }, 500);
+            }
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (isConfidentWrongMatch) {
+        setHoldProgress(0);
+        setStatusMessage(`That looks closer to gesture ${selectedGestures.findIndex((id) => id === bestMatch.signId) + 1}.`);
+        setFailProgress((prev) => {
+          const next = Math.min(100, prev + FAIL_STEP);
+          if (next >= 100) {
+            failAttempt('Different gesture detected.');
+            return 0;
+          }
+          return next;
+        });
+        return;
+      }
+
+      if (bestMatch) {
+        setStatusMessage(
+          `Checking gesture ${activeTargetSlot ?? '?'}. Detector currently sees gesture ${selectedGestures.findIndex((id) => id === bestMatch.signId) + 1}.`
+        );
+      } else {
+        setStatusMessage(`Checking gesture ${activeTargetSlot ?? '?'}. Keep the same pose for a moment.`);
+      }
+      setHoldProgress((prev) => Math.max(0, prev - 4));
+      setFailProgress((prev) => Math.max(0, prev - 8));
+    }, 200);
+
+    return () => window.clearInterval(interval);
+  }, [
+    activeTargetId,
+    activeTargetSlot,
+    attemptsUsed,
+    cooldownRemaining,
+    isAdvancingStep,
+    isCameraActive,
+    onVerifySuccess,
+    selectedGestures,
+    verifySequence,
+    verifiedCount,
+  ]);
 
   return (
     <motion.div
@@ -110,42 +264,59 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
     >
       <div className="flex justify-start">
         <button onClick={onBack} className="flex items-center text-[#888888] hover:text-black transition-colors font-medium">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Choice
+          <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
         </button>
       </div>
       <div className="space-y-2 text-center">
         <h1 className="text-[28px] font-bold text-[#444444]">Verify Identity</h1>
-        <p className="text-[#999999]">Perform your security hand sign</p>
+        <p className="text-[#999999]">Login checks the live gesture against the averaged template from the two saved samples.</p>
       </div>
 
-      {/* Top 4 Gestures Display */}
-      <div className="flex justify-center">
-        {selectedGestures.map((id, index) => {
-          const sign = HAND_SIGNS.find(s => s.id === id);
+      <div className="grid grid-cols-4 gap-3 px-2">
+        {verifySequence.map((id, index) => {
+          const slotIndex = selectedGestures.findIndex((gestureId) => gestureId === id);
+          const slotNumber = slotIndex + 1;
           const isVerified = index < verifiedCount;
           const isActive = index === verifiedCount;
           return (
             <div
-              key={id}
-              className={`relative p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${isVerified
-                ? 'border-green-500 bg-green-50'
-                : isActive
-                  ? 'border-[#222222] bg-[#f8f8f8] shadow-md'
-                  : 'border-[#cccccc] opacity-40'
-                }`}
+              key={`${id}-${index}`}
+              className={`relative rounded-2xl border-2 p-4 text-center transition-all ${
+                isVerified
+                  ? 'border-green-500 bg-green-50'
+                  : isActive
+                    ? 'border-[#222222] bg-[#f8f8f8] shadow-md'
+                    : 'border-[#d5d5d5] bg-white opacity-60'
+              }`}
             >
-              <div className="inline-flex min-h-[4.5rem] items-center justify-center rounded-lg bg-[#f0f0f0] px-2 py-2">
-                <img
-                  src={sign?.image}
-                  alt={sign?.name}
-                  className="block w-auto h-auto max-w-[4rem] max-h-[4rem] object-contain"
-                />
+              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[#9a9a9a]">Step {index + 1}</p>
+              <div className="mt-3 flex h-16 items-center justify-center rounded-xl bg-[#f0f0f0]">
+                <span className="text-3xl font-black text-[#222222]">{slotNumber}</span>
               </div>
-              <span className="text-[10px] font-bold uppercase text-center leading-tight">{sign?.name}</span>
-              {isVerified && <CheckCircle2 className="w-4 h-4 text-green-500 absolute -top-1 -right-1 bg-white rounded-full" />}
+              {isVerified && <CheckCircle2 className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white text-green-500" />}
             </div>
           );
         })}
+      </div>
+
+      <div className="rounded-3xl border border-[#d9d9d9] bg-[#fafafa] p-6 text-center">
+        <p className="text-sm uppercase tracking-[0.35em] text-[#999999]">Challenge Order</p>
+        <div className="mt-4 flex items-center justify-center gap-3">
+          {verifySequence.map((id, index) => {
+            const slotIndex = selectedGestures.findIndex((gestureId) => gestureId === id);
+            return (
+              <div
+                key={`challenge-${id}-${index}`}
+                className={`flex h-16 w-16 items-center justify-center rounded-2xl border ${
+                  index === verifiedCount ? 'border-[#222222] bg-white shadow-sm' : 'border-[#d9d9d9] bg-white/70'
+                }`}
+              >
+                <span className="text-2xl font-black text-[#222222]">{slotIndex + 1}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-4 text-sm text-[#666666]">Current target: gesture {activeTargetSlot ?? '?'}</p>
       </div>
 
       <div className="aspect-video bg-black rounded-2xl flex items-center justify-center text-white relative overflow-hidden group">
@@ -163,103 +334,87 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
           </div>
         ) : (
           <CameraFeed isActive={isCameraActive}>
-            {(video) => (
-              <>
+            {(video) => {
+              videoRef.current = video;
+              return (
+                <>
                 <HandMarkers
                   video={video}
                   onHandsStateChange={setHandsState}
                   onLandmarksChange={setCurrentLandmarks}
                   onError={setHandTrackingError}
                 />
-
-                {/* Auto-Progress Overlay */}
                 <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                  {verifyProgress > 0 && (
+                  {holdProgress > 0 && (
                     <div className="relative w-24 h-24">
                       <svg className="w-full h-full transform -rotate-90">
                         <circle cx="48" cy="48" r="40" stroke="white" strokeWidth="8" fill="transparent" className="opacity-20" />
                         <circle
-                          cx="48" cy="48" r="40" stroke="#FF6321" strokeWidth="8" fill="transparent"
+                          cx="48"
+                          cy="48"
+                          r="40"
+                          stroke="#22c55e"
+                          strokeWidth="8"
+                          fill="transparent"
                           strokeDasharray={251.2}
-                          strokeDashoffset={251.2 - (251.2 * verifyProgress) / 100}
+                          strokeDashoffset={251.2 - (251.2 * holdProgress) / 100}
                           className="transition-all duration-100 ease-linear"
                         />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-white text-xs font-bold uppercase tracking-tighter">Matching</span>
+                        <span className="text-white text-xs font-bold uppercase">Match</span>
                       </div>
                     </div>
                   )}
                 </div>
-
-                <div className="absolute inset-0 flex items-center justify-center z-10">
-                  {verifiedCount < selectedGestures.length && (
-                    <div className="text-center space-y-2">
-                      <p className="text-xs font-bold uppercase tracking-widest opacity-60">
-                        {handTrackingError ?? (handsState.totalHands > 0 ? 'Hand detected' : 'show hand(s)')}
-                      </p>
-                      <p className="text-xl font-bold uppercase tracking-widest text-white">
-                        {HAND_SIGNS.find(s => s.id === selectedGestures[verifiedCount])?.name}
-                      </p>
-                      {similarity !== null && (
-                        <div className="space-y-1">
-                          <p className={`text-xs font-bold ${similarity < 0.08 ? 'text-green-400' : 'text-red-400'}`}>
-                            {Math.max(0, 100 - (similarity * 1000)).toFixed(0)}% Match
-                          </p>
-                          {hint && similarity >= 0.22 && (
-                            <p className="text-[10px] text-yellow-400 bg-black/40 px-2 py-0.5 rounded-full inline-block">
-                              💡 {hint}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Biometric Dashboard */}
-                      {verifiedCount > 0 && (
-                        <div className="mt-2 flex flex-col items-center gap-1">
-                          <div className="flex gap-2">
-                            <span className="text-[9px] font-bold uppercase tracking-tighter text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded-full border border-sky-500/20">
-                              Anatomy: {Math.max(0, 100 - (similarity ? similarity * 500 : 0)).toFixed(0)}%
-                            </span>
-                            <span className="text-[9px] font-bold uppercase tracking-tighter text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded-full border border-purple-500/20">
-                              Timing: {verifyTimestamps.length > 1 ? "Matched" : "Scanning..."}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                <div className="absolute top-4 left-4 flex items-center space-x-2 z-30 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                  <div className={`w-2 h-2 rounded-full ${handsState.totalHands > 0 ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white">
+                    {handTrackingError ?? (handsState.totalHands > 0 ? 'Pose detected' : 'Show hand(s)')}
+                  </span>
                 </div>
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.leftDetected ? 'bg-green-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Left hand
-                  </div>
-                  <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.rightDetected ? 'bg-sky-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Right hand
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              );
+            }}
           </CameraFeed>
         )}
       </div>
 
-      <div className="flex justify-center pt-4">
-        {verifiedCount < selectedGestures.length ? (
-          <div className={`px-10 py-4 rounded-xl font-bold flex flex-col items-center transition-all ${similarity !== null && similarity < 0.22 ? 'bg-[#FF6321]/10 text-[#FF6321]' : 'bg-[#f0f0f0] text-[#999999]'}`}>
-            {handsState.totalHands === 0 ? (
-              <span>Waiting for hand...</span>
-            ) : similarity !== null && similarity < 0.08 ? (
-              <>
-                <span className="text-sm">Matching! Hold for {(1 - (verifyProgress / 100)).toFixed(1)}s</span>
-              </>
-            ) : (
-              <span className="text-sm">Keep performing the sign correctly</span>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center text-green-600 font-bold text-xl animate-bounce">
-            <CheckCircle2 className="w-6 h-6 mr-2" /> Identity Verified!
+      <div className="space-y-3">
+        <div className={`w-full rounded-lg px-6 py-4 font-bold shadow-lg transition-all text-center ${
+          cooldownRemaining > 0
+            ? 'bg-[#dddddd] text-[#999999]'
+            : isAdvancingStep
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : holdProgress > 0
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : failProgress > 0
+                  ? 'bg-red-50 text-red-600 border border-red-200'
+                  : 'bg-[#222222] text-white'
+        }`}>
+          {cooldownRemaining > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" /> Locked for {cooldownRemaining}s
+            </span>
+          ) : handsState.totalHands === 0 ? (
+            'Show the required gesture in frame'
+          ) : isAdvancingStep ? (
+            statusMessage ?? 'Matched. Moving to the next step...'
+          ) : holdProgress > 0 ? (
+            `Matched. Hold steady... ${Math.max(0, 1 - (holdProgress / 100)).toFixed(1)}s`
+          ) : failProgress > 0 ? (
+            'Different gesture detected. Adjust your hand.'
+          ) : (
+            `Checking gesture ${activeTargetSlot ?? '?'} automatically`
+          )}
+        </div>
+
+        {(statusMessage || cooldownRemaining > 0 || lastScore !== null) && (
+          <div className="rounded-2xl border border-[#ececec] bg-[#fafafa] px-5 py-4 text-sm text-[#666666]">
+            {statusMessage && <p>{statusMessage}</p>}
+            {!statusMessage && cooldownRemaining > 0 && <p>Please wait until the lock timer ends, then restart from step 1.</p>}
+            {lastScore !== null && cooldownRemaining <= 0 && <p>Current match score: {lastScore.toFixed(3)}</p>}
+            {cooldownRemaining <= 0 && <p className="mt-1">Attempts left: {MAX_ATTEMPTS - attemptsUsed}</p>}
           </div>
         )}
       </div>

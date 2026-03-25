@@ -46,7 +46,7 @@ export function LoginView({ username, onUsernameChange, onLogin, onRegister, onF
       </form>
       <p className="text-center text-[#999999] text-[15px]">
         Not Registered Yet?{' '}
-        <button onClick={onRegister} className="font-bold text-[#222222] hover:underline">
+        <button type="button" onClick={onRegister} className="font-bold text-[#222222] hover:underline">
           Create an account
         </button>
       </p>
