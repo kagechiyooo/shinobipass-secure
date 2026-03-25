@@ -70,7 +70,7 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
       </div>
       <div className="space-y-2">
         <h1 className="text-[28px] font-bold text-[#444444]">Record Gestures</h1>
-        <p className="text-[#999999]">Perform the sign and save (3 times each)</p>
+        <p className="text-[#999999]">Perform the sign and save (2 times each)</p>
       </div>
 
       <div className="bg-[#f8f8f8] rounded-3xl p-10 space-y-6 border border-[#cccccc]">
@@ -87,10 +87,14 @@ export function RecordGesturesView({ selectedGestures, recordingIndex, repetitio
           <h2 className="text-2xl font-bold uppercase tracking-widest">
             {currentSign?.name}
           </h2>
-          <div className="flex justify-center mt-4">
-            <div className="px-4 py-1 rounded-full bg-[#222222] text-white text-[10px] uppercase tracking-widest font-bold">
-              Hold sign still
-            </div>
+          <div className="flex justify-center space-x-2 mt-4">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className={`w-3 h-3 rounded-full ${i <= repetition ? 'bg-[#222222]' : 'bg-[#dddddd]'
+                  }`}
+              />
+            ))}
           </div>
         </div>
       </div>

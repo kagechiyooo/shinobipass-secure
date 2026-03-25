@@ -82,96 +82,108 @@ export const gestureUtils = {
      */
     compareAgainstSignature: (
         currentHands: { landmarks: Landmark[]; label: string }[],
-        signatureHands: { landmarks: Landmark[]; label: string }[]
+        signatureCaptures: { landmarks: Landmark[]; label: string }[][]
     ): { score: number, hint: string | null } => {
-        if (currentHands.length === 0 || signatureHands.length === 0) return { score: 999, hint: null };
+        if (currentHands.length === 0 || signatureCaptures.length === 0) return { score: 999, hint: null };
 
-        let totalScoreSum = 0;
-        let worstFingerHint: string | null = null;
+        let bestOverallMatchScore = 999;
+        let bestOverallHint: string | null = null;
         const fingerNames = ['นิ้วหัวแม่มือ', 'นิ้วชี้', 'นิ้วกลาง', 'นิ้วนาง', 'นิ้วก้อย'];
 
-        signatureHands.forEach(sigHand => {
-            const sigFeatures = gestureUtils.extractFeatures(sigHand.landmarks);
-            if (!sigFeatures) return;
+        // Check against each training capture (repetition)
+        signatureCaptures.forEach(signatureHands => {
+            let totalScoreSum = 0;
+            let worstFingerHint: string | null = null;
 
-            let bestHandMatchScore = 999;
-            let currentHandHint: string | null = null;
+            signatureHands.forEach(sigHand => {
+                const sigFeatures = gestureUtils.extractFeatures(sigHand.landmarks);
+                if (!sigFeatures) return;
 
-            currentHands.forEach(currHand => {
-                // 0. Handedness Check (Mandatory)
-                if (currHand.label !== sigHand.label) {
-                    return;
-                }
+                let bestHandMatchScore = 999;
+                let currentHandHint: string | null = null;
 
-                const currFeatures = gestureUtils.extractFeatures(currHand.landmarks);
-                if (!currFeatures) return;
-
-                // 1. Calculate Per-Finger Error
-                let maxFingerError = 0;
-                let fingerWithMaxError = -1;
-                let absoluteJointFail = false;
-
-                // There are 5 fingers, each has 3 joint angles
-                for (let fIdx = 0; fIdx < 5; fIdx++) {
-                    let fingerAngleDiff = 0;
-                    for (let jIdx = 0; jIdx < 3; jIdx++) {
-                        const idx = fIdx * 3 + jIdx;
-                        const diff = Math.abs(currFeatures.angles[idx] - sigFeatures.angles[idx]);
-
-                        // User-Friendly cutoff (relaxed from 40 to 50)
-                        if (diff > 50) absoluteJointFail = true;
-
-                        // Squared penalty (relaxed from cubic)
-                        fingerAngleDiff += Math.pow(diff / 90, 2);
+                currentHands.forEach(currHand => {
+                    // 0. Handedness Check (Mandatory)
+                    if (currHand.label !== sigHand.label) {
+                        return;
                     }
-                    fingerAngleDiff /= 3;
 
-                    // Distance error for this finger
-                    const distDiff = Math.abs(currFeatures.tipDistances[fIdx] - sigFeatures.tipDistances[fIdx]);
-                    const fingerTotalError = (fingerAngleDiff * 0.9) + (Math.pow(distDiff, 1.1) * 0.1);
+                    const currFeatures = gestureUtils.extractFeatures(currHand.landmarks);
+                    if (!currFeatures) return;
 
-                    if (fingerTotalError > maxFingerError) {
-                        maxFingerError = fingerTotalError;
-                        fingerWithMaxError = fIdx;
+                    // 1. Calculate Per-Finger Error
+                    let maxFingerError = 0;
+                    let fingerWithMaxError = -1;
+                    let absoluteJointFail = false;
+
+                    // There are 5 fingers, each has 3 joint angles
+                    for (let fIdx = 0; fIdx < 5; fIdx++) {
+                        let fingerAngleDiff = 0;
+                        for (let jIdx = 0; jIdx < 3; jIdx++) {
+                            const idx = fIdx * 3 + jIdx;
+                            const diff = Math.abs(currFeatures.angles[idx] - sigFeatures.angles[idx]);
+
+                            // User-Friendly cutoff (relaxed from 40 to 50)
+                            if (diff > 50) absoluteJointFail = true;
+
+                            // Squared penalty (relaxed from cubic)
+                            fingerAngleDiff += Math.pow(diff / 90, 2);
+                        }
+                        fingerAngleDiff /= 3;
+
+                        // Distance error for this finger
+                        const distDiff = Math.abs(currFeatures.tipDistances[fIdx] - sigFeatures.tipDistances[fIdx]);
+                        const fingerTotalError = (fingerAngleDiff * 0.9) + (Math.pow(distDiff, 1.1) * 0.1);
+
+                        if (fingerTotalError > maxFingerError) {
+                            maxFingerError = fingerTotalError;
+                            fingerWithMaxError = fIdx;
+                        }
                     }
-                }
 
-                // 2. Global Spread Match
-                let spreadError = 0;
-                for (let i = 15; i < 19; i++) {
-                    const diff = Math.abs(currFeatures.angles[i] - sigFeatures.angles[i]);
-                    spreadError += Math.pow(diff / 30, 2);
-                }
-                spreadError /= 4;
-
-                // 3. Final Score
-                let handCombinedScore = (maxFingerError * 0.8) + (spreadError * 0.2);
-                if (absoluteJointFail) handCombinedScore += 0.25; // Light penalty (relaxed)
-
-                if (handCombinedScore < bestHandMatchScore) {
-                    bestHandMatchScore = handCombinedScore;
-
-                    if (maxFingerError > 0.05) {
-                        const midJointIdx = fingerWithMaxError * 3 + 1;
-                        const action = currFeatures.angles[midJointIdx] < sigFeatures.angles[midJointIdx] ? 'กาง' : 'พับ';
-                        currentHandHint = `[Security] ท่าทาง${fingerNames[fingerWithMaxError]} ผิดท่า (กาง/พับ ผิดปกติ)`;
+                    // 2. Global Spread Match
+                    let spreadError = 0;
+                    for (let i = 15; i < 19; i++) {
+                        const diff = Math.abs(currFeatures.angles[i] - sigFeatures.angles[i]);
+                        spreadError += Math.pow(diff / 30, 2);
                     }
+                    spreadError /= 4;
+
+                    // 3. Final Score
+                    let handCombinedScore = (maxFingerError * 0.8) + (spreadError * 0.2);
+                    if (absoluteJointFail) handCombinedScore += 0.25; // Light penalty (relaxed)
+
+                    if (handCombinedScore < bestHandMatchScore) {
+                        bestHandMatchScore = handCombinedScore;
+
+                        if (maxFingerError > 0.05) {
+                            const midJointIdx = fingerWithMaxError * 3 + 1;
+                            const action = currFeatures.angles[midJointIdx] < sigFeatures.angles[midJointIdx] ? 'กาง' : 'พับ';
+                            currentHandHint = `[Security] ท่าทาง${fingerNames[fingerWithMaxError]} ผิดท่า (กาง/พับ ผิดปกติ)`;
+                        }
+                    }
+                });
+
+                // If no hand matched the handedness
+                if (bestHandMatchScore >= 999) {
+                    const targetSide = sigHand.label === 'Left' ? 'มือซ้าย' : 'มือขวา';
+                    currentHandHint = `กรุณาใช้${targetSide}ตามที่บันทึกไว้ครับ`;
                 }
+
+                totalScoreSum += bestHandMatchScore;
+                worstFingerHint = currentHandHint;
             });
 
-            // If no hand matched the handedness
-            if (bestHandMatchScore >= 999) {
-                const targetSide = sigHand.label === 'Left' ? 'มือซ้าย' : 'มือขวา';
-                currentHandHint = `กรุณาใช้${targetSide}ตามที่บันทึกไว้ครับ`;
+            const captureScore = totalScoreSum / signatureHands.length;
+            if (captureScore < bestOverallMatchScore) {
+                bestOverallMatchScore = captureScore;
+                bestOverallHint = worstFingerHint;
             }
-
-            totalScoreSum += bestHandMatchScore;
-            worstFingerHint = currentHandHint;
         });
 
         return {
-            score: totalScoreSum / signatureHands.length,
-            hint: worstFingerHint
+            score: bestOverallMatchScore,
+            hint: bestOverallHint
         };
     }
 };

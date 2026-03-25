@@ -22,8 +22,8 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Account Details
       </button>
       <div className="space-y-2">
-        <h1 className="text-[28px] font-bold text-[#444444]">Select 1 Hand Sign</h1>
-        <p className="text-[#999999]">Choose exactly 1 gesture for your security pattern ({selectedGestures.length}/1)</p>
+        <h1 className="text-[28px] font-bold text-[#444444]">Select 3 Hand Signs</h1>
+        <p className="text-[#999999]">Choose exactly 3 gestures for your security passcode ({selectedGestures.length}/3)</p>
       </div>
       <div className="grid grid-cols-3 gap-4 justify-items-center">
         {HAND_SIGNS.map((sign) => (
@@ -31,8 +31,8 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
             key={sign.id}
             onClick={() => onToggleGesture(sign.id)}
             className={`relative w-fit max-w-full min-w-[8.5rem] px-3 py-3 rounded-xl border-2 transition-all flex flex-col items-center gap-2 overflow-hidden ${selectedGestures.includes(sign.id)
-                ? 'border-[#222222] bg-green-100'
-                : 'border-[#cccccc] bg-white hover:border-[#999999]'
+              ? 'border-[#222222] bg-green-100'
+              : 'border-[#cccccc] bg-white hover:border-[#999999]'
               }`}
           >
             <div className={`absolute inset-0 bg-green-500 opacity-5 ${selectedGestures.includes(sign.id) ? 'opacity-10' : ''}`} />
@@ -47,11 +47,11 @@ export function SelectGesturesView({ selectedGestures, onToggleGesture, onBack, 
       </div>
       <div className="flex justify-center pt-6">
         <button
-          disabled={selectedGestures.length !== 1}
+          disabled={selectedGestures.length !== 3}
           onClick={onNext}
-          className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${selectedGestures.length === 1
-              ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
-              : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
+          className={`px-12 py-4 rounded-lg font-bold flex items-center transition-all ${selectedGestures.length === 3
+            ? 'bg-[#222222] text-white shadow-lg hover:bg-black'
+            : 'bg-[#eeeeee] text-[#cccccc] cursor-not-allowed'
             }`}
         >
           Next <ChevronRight className="w-5 h-5 ml-2" />

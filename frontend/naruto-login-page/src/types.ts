@@ -22,7 +22,7 @@ export interface Landmark {
 
 export interface GestureSignature {
   signId: string;
-  landmarks: { landmarks: Landmark[]; label: string }[]; // Array of hands with labels
+  captures: { landmarks: Landmark[]; label: string }[][]; // Array of multi-hand captures
 }
 
 export interface User {

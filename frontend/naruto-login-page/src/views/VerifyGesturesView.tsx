@@ -58,7 +58,7 @@ export function VerifyGesturesView({ selectedGestures, signatures, verifiedCount
 
         if (signature) {
           const averaged = getAveragedLandmarks();
-          const result = gestureUtils.compareAgainstSignature(averaged, signature.landmarks);
+          const result = gestureUtils.compareAgainstSignature(averaged, signature.captures);
           setSimilarity(result.score);
           setHint(result.hint);
 
