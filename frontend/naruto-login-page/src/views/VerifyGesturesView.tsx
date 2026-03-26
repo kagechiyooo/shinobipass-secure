@@ -29,6 +29,7 @@ const BEST_MARGIN = 0.03;
 const TARGET_MARGIN = 0.04;
 const PROGRESS_STEP = 40;
 const FAIL_STEP = 12;
+const NEXT_STEP_COUNTDOWN_SECONDS = 3;
 
 const getBufferedHands = (
   buffer: { landmarks: any[]; label: string }[][],
@@ -59,6 +60,7 @@ export function VerifyGesturesView({
   const [holdProgress, setHoldProgress] = useState(0);
   const [failProgress, setFailProgress] = useState(0);
   const [isAdvancingStep, setIsAdvancingStep] = useState(false);
+  const [nextStepCountdown, setNextStepCountdown] = useState(0);
   const [lastScore, setLastScore] = useState<number | null>(null);
 
   const timeoutRef = useRef<number | null>(null);
@@ -120,6 +122,22 @@ export function VerifyGesturesView({
     };
   }, []);
 
+  useEffect(() => {
+    if (nextStepCountdown <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setNextStepCountdown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [nextStepCountdown]);
+
   const activeTargetId = verifySequence[verifiedCount] ?? null;
   const activeTargetIndex = activeTargetId ? selectedGestures.findIndex((id) => id === activeTargetId) : -1;
   const activeTargetSlot = activeTargetIndex >= 0 ? activeTargetIndex + 1 : null;
@@ -166,7 +184,7 @@ export function VerifyGesturesView({
   };
 
   useEffect(() => {
-    if (!isCameraActive || cooldownRemaining > 0 || !activeTargetId || signatures.length === 0 || isAdvancingStep) {
+    if (!isCameraActive || cooldownRemaining > 0 || !activeTargetId || signatures.length === 0 || isAdvancingStep || nextStepCountdown > 0) {
       setHoldProgress(0);
       setFailProgress(0);
       return;
@@ -249,6 +267,7 @@ export function VerifyGesturesView({
     strictVerification,
     verifySequence,
     verifiedCount,
+    nextStepCountdown,
   ]);
 
   useEffect(() => {
@@ -279,13 +298,15 @@ export function VerifyGesturesView({
 
         const nextTargetId = verifySequence[result.nextStep];
         const nextTargetIndex = selectedGestures.findIndex((id) => id === nextTargetId);
-        setStatusMessage(`Gesture ${activeTargetSlot} matched. Next: gesture ${nextTargetIndex + 1}.`);
+        setNextStepCountdown(NEXT_STEP_COUNTDOWN_SECONDS);
+        setStatusMessage(`Gesture ${activeTargetSlot} matched. Next: gesture ${nextTargetIndex + 1} in ${NEXT_STEP_COUNTDOWN_SECONDS}s.`);
         timeoutRef.current = window.setTimeout(() => {
           verifyRequestInFlightRef.current = false;
           setVerifiedCount(result.nextStep);
           setHoldProgress(0);
+          setNextStepCountdown(0);
           setIsAdvancingStep(false);
-        }, 500);
+        }, NEXT_STEP_COUNTDOWN_SECONDS * 1000);
       })
       .catch((error) => {
         verifyRequestInFlightRef.current = false;
@@ -436,6 +457,8 @@ export function VerifyGesturesView({
             <span className="inline-flex items-center gap-2">
               <ShieldAlert className="h-5 w-5" /> Locked for {cooldownRemaining}s
             </span>
+          ) : isAdvancingStep && nextStepCountdown > 0 ? (
+            `Next gesture starts in ${nextStepCountdown}s`
           ) : handsState.totalHands === 0 ? (
             'Show the required gesture in frame'
           ) : isAdvancingStep ? (
