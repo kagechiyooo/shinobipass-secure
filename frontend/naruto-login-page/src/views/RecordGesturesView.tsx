@@ -192,10 +192,10 @@ export function RecordGesturesView({ recordingIndex, repetition, onBack, onSave 
                 </div>
                 <div className="absolute top-4 right-4 flex gap-2">
                   <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.leftDetected ? 'bg-green-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Left hand
+                    Right hand
                   </div>
                   <div className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${handsState.rightDetected ? 'bg-sky-500/90 text-white' : 'bg-white/10 text-white/70'}`}>
-                    Right hand
+                    Left hand
                   </div>
                 </div>
                 </>

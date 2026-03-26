@@ -39,10 +39,6 @@ export function RegisterView({
         <p className="text-[#999999]">Enter your details to get started</p>
       </div>
       <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-        <div className="grid grid-cols-2 gap-4">
-          <Input label="First Name" placeholder="John" />
-          <Input label="Last Name" placeholder="Doe" />
-        </div>
         <Input
           label="Username"
           placeholder="Konoha Hero"
@@ -51,7 +47,7 @@ export function RegisterView({
           required
         />
         <Input
-          label="Password"
+          label="Password (อย่างน้อย 8 ตัว)"
           type="password"
           placeholder="****************"
           value={password}
