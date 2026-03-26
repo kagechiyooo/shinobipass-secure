@@ -39,7 +39,7 @@ export function LoginView({
           Login to your Account
         </h1>
         <p className="text-[#999999] text-[16px]">
-          Secure access to your Konoha
+          Please enter your email and password to log in
         </p>
       </div>
       <form className="space-y-6" onSubmit={onLogin}>
